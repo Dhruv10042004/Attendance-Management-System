@@ -19,7 +19,10 @@ release.properties
 dependency-reduced-pom.xml
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
-
+application.yml
+target/
+*.class
+.env
 # Spring Boot
 .springBeans
 *.log
