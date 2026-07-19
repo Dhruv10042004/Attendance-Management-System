@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: Attendance Management System
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/attendance_db
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+app:
+  jwtSecret: your_jwt_secret_key_change_this_in_production_must_be_at_least_256_bits_long
+  jwtExpirationMs: 86400000 # 24 hours in milliseconds
+  demo-data:
+    enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.attendance: DEBUG
