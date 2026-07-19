@@ -7,6 +7,8 @@ import com.attendance.exception.ResourceNotFoundException;
 import com.attendance.repository.SubjectRepository;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -31,7 +33,7 @@ public class SubjectService {
                 .map(subject -> modelMapper.map(subject, SubjectDTO.class))
                 .collect(Collectors.toList());
     }
-
+    @Cacheable(value = "subjects", key = "#id")
     public SubjectDTO getSubjectById(String id) {
     Subject subject = subjectRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Subject not found with id: " + id));
@@ -95,7 +97,7 @@ public class SubjectService {
         Subject savedSubject = subjectRepository.save(subject);
         return modelMapper.map(savedSubject, SubjectDTO.class);
     }
-
+    @CacheEvict(value = "subjects", key = "#id")
     public SubjectDTO updateSubject(String id, SubjectCreateRequest request) {
         Subject subject = subjectRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Subject not found with id: " + id));
@@ -115,7 +117,7 @@ public class SubjectService {
         Subject updatedSubject = subjectRepository.save(subject);
         return modelMapper.map(updatedSubject, SubjectDTO.class);
     }
-
+    @CacheEvict(value = "subjects", key = "#id")
     public void deleteSubject(String id) {
         Subject subject = subjectRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Subject not found with id: " + id));

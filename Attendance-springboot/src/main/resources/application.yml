@@ -3,7 +3,8 @@ spring:
     name: Attendance Management System
   data:
     mongodb:
-      uri: mongodb://localhost:27017/attendance_db
+      uri: mongodb+srv://dhruvnariani:Dhruv12345@cluster0.kzgryf8.mongodb.net/attendance-DB?appName=Cluster0
+      auto-index-creation: true
   servlet:
     multipart:
       max-file-size: 10MB
@@ -19,6 +20,9 @@ app:
   jwtExpirationMs: 86400000 # 24 hours in milliseconds
   demo-data:
     enabled: true
+  base-url: http://localhost:8080
+  upload:
+    dir: uploads/attendance-proofs
 
 logging:
   level:

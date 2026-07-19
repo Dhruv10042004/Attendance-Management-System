@@ -103,7 +103,7 @@ const UserManagement = () => {
       console.log('Sending data to API:', data);
       
       // Ensure all required fields are present
-      if (!data.sap || !data.name || !data.email || !data.password || !data.role) {
+      if (!data.name || !data.email || !data.password || !data.role) {
         setError('All required fields must be filled in.');
         return;
       }
@@ -220,16 +220,16 @@ const UserManagement = () => {
 
   // Generate sample CSV for bulk upload
   const generateSampleCSV = () => {
-    const csvContent = 'sap,name,email,password,isFirstLogin,className,role\nSAP123,John Doe,john@example.com,password123,true,10A,student\nSAP124,Jane Smith,jane@example.com,password123,true,10A,student';
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'sample_users.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
+  const csvContent = 'sap,name,email,password,isFirstLogin,className,role,department\nSAP123,John Doe,john@example.com,password123,true,10A,student,Computer Science\nSAP124,Jane Smith,jane@example.com,password123,true,10A,student,Computer Science';
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sample_users.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
 
   // Modal component
   const Modal = ({ isOpen, onClose, title, children }) => {
@@ -252,29 +252,50 @@ const UserManagement = () => {
 
   // Add User Form Content using react-hook-form
   const AddUserForm = () => {
-    const { register, handleSubmit, control, formState: { errors } } = useForm({
-      defaultValues: {
-        sap: '',
-        name: '',
-        email: '',
-        password: '',
-        isFirstLogin: true,
-        className: '',
-        role: 'student'
-      }
-    });
-    
-    return (
-      <form onSubmit={handleSubmit(handleAddUser)}>
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">SAP ID</label>
-          <input
-            {...register('sap', { required: 'SAP ID is required' })}
-            type="text"
-            className={`w-full border ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg px-3 py-2`}
-          />
-          {errors.sap && <p className="text-red-500 text-xs mt-1">{errors.sap.message}</p>}
-        </div>
+  const { register, handleSubmit, control, watch, setError, clearErrors, formState: { errors } } = useForm({
+    defaultValues: {
+      sap: '',
+      name: '',
+      email: '',
+      password: '',
+      isFirstLogin: true,
+      className: '',
+      department: '',
+      role: 'student'
+    }
+  });
+
+  const selectedRole = watch('role');
+  const sapRequired = selectedRole === 'student';
+
+  useEffect(() => {
+    if (!sapRequired) {
+      clearErrors('sap');
+    }
+  }, [sapRequired, clearErrors]);
+
+  const onSubmit = (data) => {
+    if (sapRequired && !data.sap?.trim()) {
+      setError('sap', { type: 'manual', message: 'SAP ID is required' });
+      return;
+    }
+    handleAddUser(data);
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-1">
+          SAP ID {!sapRequired && <span className="text-xs text-gray-400">(optional for this role)</span>}
+        </label>
+        <input
+          {...register('sap')}
+          type="text"
+          className={`w-full border ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg px-3 py-2`}
+        />
+        {errors.sap && <p className="text-red-500 text-xs mt-1">{errors.sap.message}</p>}
+      </div>
+      {/* rest of the form unchanged */}
         
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Name</label>
@@ -321,7 +342,14 @@ const UserManagement = () => {
           />
           <p className="text-xs text-gray-500 mt-1">Leave empty for teacher, HOD, or admin roles</p>
         </div>
-        
+        <div className="mb-4">
+            <label className="block text-sm font-medium mb-1">Department</label>
+          <input
+      {...register('department')}
+     type="text"
+      className={`w-full border ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg px-3 py-2`}
+         />
+        </div>
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Role</label>
           <select
@@ -424,7 +452,14 @@ const UserManagement = () => {
             className={`w-full border ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg px-3 py-2`}
           />
         </div>
-        
+        <div className="mb-4">
+  <label className="block text-sm font-medium mb-1">Department</label>
+  <input
+    {...register('department')}
+    type="text"
+    className={`w-full border ${theme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} rounded-lg px-3 py-2`}
+  />
+</div>
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Role</label>
           <select

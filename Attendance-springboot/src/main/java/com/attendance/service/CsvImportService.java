@@ -26,7 +26,9 @@ public class CsvImportService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
-
+    private String safeGet(CSVRecord record, String column) {
+    return record.isSet(column) ? record.get(column) : null;
+    }
     public CsvImportResult importUsersFromCsv(MultipartFile file) throws IOException {
         List<String> created = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
@@ -48,14 +50,15 @@ public class CsvImportService {
                 }
 
                 User user = new User();
-                user.setSap(sap);
-                user.setName(csvRecord.get("name"));
-                user.setEmail(email);
-                user.setPassword(passwordEncoder.encode(csvRecord.get("password")));
-                user.setClassName(csvRecord.get("className"));
-                user.setRole(csvRecord.get("role"));
-                user.setIsFirstLogin(true);
-                user.setCreatedAt(LocalDateTime.now());
+user.setSap(sap);
+user.setName(csvRecord.get("name"));
+user.setEmail(email);
+user.setPassword(passwordEncoder.encode(csvRecord.get("password")));
+user.setClassName(safeGet(csvRecord, "className"));
+user.setRole(csvRecord.get("role"));
+user.setDepartment(safeGet(csvRecord, "department"));
+user.setIsFirstLogin(true);
+user.setCreatedAt(LocalDateTime.now());
 
                 try {
                     userRepository.save(user);

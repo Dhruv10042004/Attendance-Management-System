@@ -64,58 +64,40 @@ export default function HodDashboard() {
   // Fetch all attendance requests - HOD should see all requests
   useEffect(() => {
     const fetchRequests = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get('/attendance-requests');
+  try {
+    setLoading(true);
+    const res = await api.get(`/attendance-requests/department/${user.department}`);
 
-        // Ensure res.data is an array and each request has required fields
-        const responseData = Array.isArray(res.data) ? res.data.map(request => ({
-          ...request,
-          student_id: request.student_id || { _id: 'unknown', name: 'Unknown', sap: 'N/A', email: 'N/A', className: 'N/A' },
-          subject_ids: Array.isArray(request.subject_ids) ? request.subject_ids.map((subject) => ({
-            ...subject,
-            teacher_id: subject.teacher_id || null
-          })) : [],
-          student_ids: Array.isArray(request.student_ids) ? request.student_ids : []
-        })) : [];
+    const responseData = Array.isArray(res.data) ? res.data.map(request => ({
+      ...request,
+      student_id: request.student_id || { _id: 'unknown', name: 'Unknown', sap: 'N/A', email: 'N/A', className: 'N/A' },
+      subject_ids: Array.isArray(request.subject_ids) ? request.subject_ids.map((subject) => ({
+        ...subject,
+        teacher_id: subject.teacher_id || null
+      })) : [],
+      student_ids: Array.isArray(request.student_ids) ? request.student_ids : []
+    })) : [];
 
-        setRequests(responseData);
-        setFilteredRequests(responseData);
-      } catch (error) {
-        console.error('Error fetching requests:', error);
-        setError(error?.response?.data?.message || 'Error fetching requests');
-      } finally {
-        setLoading(false);
-      }
-    };
+    setRequests(responseData);
+    setFilteredRequests(responseData);
 
-    const fetchStats = async () => {
-      try {
-        const res = await api.get('/attendance-requests');
-        const allRequests = Array.isArray(res.data) ? res.data : [];
+    setStats({
+      total: responseData.length,
+      pending: responseData.filter(req => req.status === 'pending').length,
+      approved: responseData.filter(req => req.status === 'approved').length,
+      rejected: responseData.filter(req => req.status === 'rejected').length
+    });
+  } catch (error) {
+    console.error('Error fetching requests:', error);
+    setError(error?.response?.data?.message || 'Error fetching requests');
+    setStats({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  } finally {
+    setLoading(false);
+  }
+};
 
-        const stats = {
-          total: allRequests.length,
-          pending: allRequests.filter(req => req.status === 'pending').length,
-          approved: allRequests.filter(req => req.status === 'approved').length,
-          rejected: allRequests.filter(req => req.status === 'rejected').length
-        };
-
-        setStats(stats);
-      } catch (error) {
-        console.error('Error calculating stats:', error);
-        setStats({
-          total: 0,
-          pending: 0,
-          approved: 0,
-          rejected: 0
-        });
-      }
-    };
-
-    fetchRequests();
-    fetchStats();
-  }, []);
+  fetchRequests();
+  }, [user?.department]);
 
   // Filter requests when search term or status filter changes
   useEffect(() => {

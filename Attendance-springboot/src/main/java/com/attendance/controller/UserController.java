@@ -79,7 +79,8 @@ public class UserController {
                     user.getEmail(),
                     user.getClassName(),
                     user.getRole(),
-                    user.getIsFirstLogin());
+                    user.getIsFirstLogin(),
+                    user.getDepartment());
 
             LoginResponse response = new LoginResponse(token, userDTO);
             return ResponseEntity.ok(new ApiResponse<>(true, "Login successful", response));

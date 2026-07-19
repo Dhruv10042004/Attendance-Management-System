@@ -16,4 +16,5 @@ public class UserCreateRequest {
     private String className;
     private String role; // student, teacher, hod, admin
     private Boolean isFirstLogin;
+    private String department;
 }

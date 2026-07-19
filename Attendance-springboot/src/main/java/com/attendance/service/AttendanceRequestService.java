@@ -3,6 +3,7 @@ package com.attendance.service;
 import com.attendance.dto.SubjectDateDTO;
 import com.attendance.dto.UserDTO;
 import com.attendance.dto.SubjectDTO;
+import com.attendance.exception.BadRequestException;
 import com.attendance.exception.ResourceNotFoundException;
 import com.attendance.dto.AttendanceRequestDTO;
 import com.attendance.dto.AttendanceRequestCreateRequest;
@@ -14,6 +15,12 @@ import com.attendance.repository.NotificationRepository;
 import com.attendance.entity.Notification;
 import com.attendance.repository.NotificationRepository;
 import com.attendance.entity.Subject;
+import com.attendance.entity.User;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -49,6 +56,8 @@ public class AttendanceRequestService {
     private NotificationRepository notificationRepository;
     @Autowired
     private SubjectService subjectService;
+    @Autowired
+    private MongoTemplate mongoTemplate;
     public AttendanceRequest getRequestEntityById(String id) {
     return attendanceRequestRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
@@ -118,6 +127,7 @@ public class AttendanceRequestService {
         dto.setDate(request.getDate());
         dto.setCreatedAt(request.getCreatedAt());
         dto.setUpdatedAt(request.getUpdatedAt());
+        dto.setDepartment(request.getDepartment());
 
         List<SubjectDateDTO> enrichedSubjectDates = (request.getSubjectDates() == null)
                 ? new ArrayList<>()
@@ -166,8 +176,7 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
             String subjectDatesJson,
             MultipartFile proof) throws com.fasterxml.jackson.core.JsonProcessingException {
 
-        userService.getUserEntityById(studentId);
-
+        User student=userService.getUserEntityById(studentId);
         ObjectMapper mapper = new ObjectMapper();
         List<Map<String, String>> rawSubjectDates = mapper.readValue(
                 subjectDatesJson, new TypeReference<List<Map<String, String>>>() {
@@ -197,6 +206,7 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
         attendanceRequest.setStatus("pending");
         attendanceRequest.setDate(date != null ? LocalDateTime.parse(date.substring(0, 19)) : LocalDateTime.now());
         attendanceRequest.setCreatedAt(LocalDateTime.now());
+        attendanceRequest.setDepartment(student.getDepartment());
 
         if (proof != null && !proof.isEmpty()) {
             String proofUrl = saveProofFile(proof);
@@ -266,40 +276,48 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
     }
 
     public AttendanceRequestDTO updateRequestStatus(String id, String status) {
-        AttendanceRequest attendanceRequest = attendanceRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
-
-        if (!status.equals("approved") && !status.equals("rejected")) {
-            throw new IllegalArgumentException("Invalid status. Must be 'approved' or 'rejected'");
-        }
-
-        attendanceRequest.setStatus(status);
-        if (status.equals("approved")) {
-    List<String> allStudentIds = new ArrayList<>();
-    allStudentIds.add(attendanceRequest.getStudentId());
-    if (attendanceRequest.getStudentIds() != null) {
-        allStudentIds.addAll(attendanceRequest.getStudentIds());
+    if (!status.equals("approved") && !status.equals("rejected")) {
+        throw new IllegalArgumentException("Invalid status. Must be 'approved' or 'rejected'");
     }
 
-    for (AttendanceRequest.SubjectDate sd : attendanceRequest.getSubjectDates()) {
-        Subject subject = subjectService.getSubjectEntityById(sd.getSubjectId());
+    Query query = new Query(Criteria.where("id").is(id).and("status").is("pending"));
+    Update update = new Update().set("status", status).set("updatedAt", LocalDateTime.now());
 
-        Notification notification = new Notification();
-        notification.setAttendanceRequestId(attendanceRequest.getId());
-        notification.setTeacherId(subject.getTeacherId());
-        notification.setStudentIds(allStudentIds);
-        notification.setSubjectId(sd.getSubjectId());
-        notification.setDate(sd.getDate());
-        notification.setIsRead(false);
-        notification.setCreatedAt(LocalDateTime.now());
+    AttendanceRequest updated = mongoTemplate.findAndModify(
+            query, update,
+            FindAndModifyOptions.options().returnNew(true),
+            AttendanceRequest.class);
 
-        notificationRepository.save(notification);
+    if (updated == null) {
+        AttendanceRequest existing = attendanceRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
+        throw new BadRequestException("Request is no longer pending (current status: " + existing.getStatus() + ")");
+    }
+
+    if (status.equals("approved")) {
+        List<String> allStudentIds = new ArrayList<>();
+        allStudentIds.add(updated.getStudentId());
+        if (updated.getStudentIds() != null) {
+            allStudentIds.addAll(updated.getStudentIds());
         }
-        }
-        attendanceRequest.setUpdatedAt(LocalDateTime.now());
 
-        AttendanceRequest updatedRequest = attendanceRequestRepository.save(attendanceRequest);
-        return mapToDTO(updatedRequest);
+        for (AttendanceRequest.SubjectDate sd : updated.getSubjectDates()) {
+            Subject subject = subjectService.getSubjectEntityById(sd.getSubjectId());
+
+            Notification notification = new Notification();
+            notification.setAttendanceRequestId(updated.getId());
+            notification.setTeacherId(subject.getTeacherId());
+            notification.setStudentIds(allStudentIds);
+            notification.setSubjectId(sd.getSubjectId());
+            notification.setDate(sd.getDate());
+            notification.setIsRead(false);
+            notification.setCreatedAt(LocalDateTime.now());
+
+            notificationRepository.save(notification);
+        }
+    }
+
+    return mapToDTO(updated);
     }
 
     public void deleteRequest(String id) {
@@ -340,6 +358,12 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
         } catch (IOException e) {
             throw new RuntimeException("Failed to store proof file: " + e.getMessage(), e);
         }
+    }
+    public List<AttendanceRequestDTO> getRequestsByDepartment(String department) {
+    return attendanceRequestRepository.findByDepartment(department)
+            .stream()
+            .map(this::mapToDTO)
+            .collect(Collectors.toList());
     }
 
 }

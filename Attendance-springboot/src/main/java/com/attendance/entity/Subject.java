@@ -23,7 +23,7 @@ public class Subject {
     private String startTime; // HH:MM format
 
     private String endTime; // HH:MM format
-
+    @Indexed
     private String teacherId; // Reference to User
 
     private String className;

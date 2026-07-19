@@ -22,8 +22,7 @@ public class User implements UserDetails {
 
     @Id
     private String id;
-
-    @Indexed(unique = true)
+    
     private String sap;
 
     private String name;
@@ -38,6 +37,8 @@ public class User implements UserDetails {
     private String role; // student, teacher, hod, admin
 
     private Boolean isFirstLogin = true;
+
+    private String department;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 

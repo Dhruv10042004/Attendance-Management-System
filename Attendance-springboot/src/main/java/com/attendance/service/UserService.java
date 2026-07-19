@@ -80,28 +80,30 @@ public class UserService {
     }
 
     public UserDTO createUser(UserCreateRequest request) {
-        // Validate unique constraints
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new BadRequestException("Email already exists");
-        }
-
-        if (request.getSap() != null && userRepository.existsBySap(request.getSap())) {
-            throw new BadRequestException("SAP already exists");
-        }
-
-        User user = new User();
-        user.setSap(request.getSap());
-        user.setName(request.getName());
-        user.setEmail(request.getEmail());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setClassName(request.getClassName());
-        user.setRole(request.getRole());
-        user.setIsFirstLogin(request.getIsFirstLogin() != null ? request.getIsFirstLogin() : true);
-        user.setCreatedAt(LocalDateTime.now());
-
-        User savedUser = userRepository.save(user);
-        return modelMapper.map(savedUser, UserDTO.class);
+    if (userRepository.existsByEmail(request.getEmail())) {
+        throw new BadRequestException("Email already exists");
     }
+
+    boolean hasSap = request.getSap() != null && !request.getSap().isBlank();
+
+    if (hasSap && userRepository.existsBySap(request.getSap())) {
+        throw new BadRequestException("SAP already exists");
+    }
+
+    User user = new User();
+    user.setSap(hasSap ? request.getSap() : null);
+    user.setName(request.getName());
+    user.setEmail(request.getEmail());
+    user.setPassword(passwordEncoder.encode(request.getPassword()));
+    user.setClassName(request.getClassName());
+    user.setRole(request.getRole());
+    user.setDepartment(request.getDepartment());
+    user.setIsFirstLogin(request.getIsFirstLogin() != null ? request.getIsFirstLogin() : true);
+    user.setCreatedAt(LocalDateTime.now());
+
+    User savedUser = userRepository.save(user);
+    return modelMapper.map(savedUser, UserDTO.class);
+}
 
     public UserDTO updateUser(String id, UserUpdateRequest request) {
         User user = userRepository.findById(id)
@@ -117,12 +119,12 @@ public class UserService {
             user.setEmail(request.getEmail());
         }
 
-        if (request.getSap() != null && !request.getSap().equals(user.getSap())) {
-            if (userRepository.existsBySap(request.getSap())) {
-                throw new BadRequestException("SAP already exists");
-            }
-            user.setSap(request.getSap());
-        }
+        if (request.getSap() != null && !request.getSap().isBlank() && !request.getSap().equals(user.getSap())) {
+    if (userRepository.existsBySap(request.getSap())) {
+        throw new BadRequestException("SAP already exists");
+    }
+    user.setSap(request.getSap());
+}
 
         if (request.getClassName() != null)
             user.setClassName(request.getClassName());
@@ -130,6 +132,8 @@ public class UserService {
             user.setRole(request.getRole());
         if (request.getIsFirstLogin() != null)
             user.setIsFirstLogin(request.getIsFirstLogin());
+        if (request.getDepartment() != null)
+            user.setDepartment(request.getDepartment());
         user.setUpdatedAt(LocalDateTime.now());
 
         User updatedUser = userRepository.save(user);

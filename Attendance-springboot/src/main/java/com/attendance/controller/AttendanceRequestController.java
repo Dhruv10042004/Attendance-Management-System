@@ -26,7 +26,12 @@ public class AttendanceRequestController {
 
     @Autowired
     private AttendanceRequestService attendanceRequestService;
-
+    @GetMapping("/department/{department}")
+    public ResponseEntity<ApiResponse<List<AttendanceRequestDTO>>> getRequestsByDepartment(
+        @PathVariable String department) {
+    List<AttendanceRequestDTO> requests = attendanceRequestService.getRequestsByDepartment(department);
+    return ResponseEntity.ok(new ApiResponse<>(true, "Attendance requests retrieved successfully", requests));
+    }
     // Get all requests
     @GetMapping
     public ResponseEntity<ApiResponse<List<AttendanceRequestDTO>>> getAllRequests() {

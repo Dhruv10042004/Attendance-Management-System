@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
@@ -19,9 +20,9 @@ public class Notification {
     private String id;
 
     private String attendanceRequestId; // Reference to AttendanceRequest
-
+    @Indexed
     private String teacherId; // Reference to User
-
+    @Indexed
     private List<String> studentIds; // References to Users
 
     private String subjectId; // Reference to Subject

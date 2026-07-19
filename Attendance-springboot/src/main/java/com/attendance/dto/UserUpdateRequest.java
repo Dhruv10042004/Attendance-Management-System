@@ -15,4 +15,5 @@ public class UserUpdateRequest {
     private String className;
     private String role;
     private Boolean isFirstLogin;
+    private String department;
 }

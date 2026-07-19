@@ -22,4 +22,5 @@ public interface AttendanceRequestRepository extends MongoRepository<AttendanceR
     Long countByStudentIdAndStatus(String studentId, String status);
 
     List<AttendanceRequest> findByStudentIdsContaining(String studentId);
+    List<AttendanceRequest> findByDepartment(String department);
 }

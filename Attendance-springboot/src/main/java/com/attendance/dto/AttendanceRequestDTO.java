@@ -24,4 +24,5 @@ public class AttendanceRequestDTO {
     private LocalDateTime updatedAt;
     private UserDTO student;        // NEW: enriched owner
     private List<UserDTO> students; 
+    private String department;
 }
