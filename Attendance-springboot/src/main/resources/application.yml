@@ -3,7 +3,7 @@ spring:
     name: Attendance Management System
   data:
     mongodb:
-      uri: mongodb+srv://dhruvnariani:Dhruv12345@cluster0.kzgryf8.mongodb.net/attendance-DB?appName=Cluster0
+      uri: mongodb+srv://dhruvnariani:Dhruv2004@cluster0.kzgryf8.mongodb.net/attendance-DB?appName=Cluster0
       auto-index-creation: true
   servlet:
     multipart:
@@ -16,7 +16,7 @@ server:
     context-path: /api
 
 app:
-  jwtSecret: your_jwt_secret_key_change_this_in_production_must_be_at_least_256_bits_long
+  jwtSecret: gqw7VAEC/KNDuuUiJOhpY7cHCK99qJh1SPC5RytIhAszgp9iMpheHfTcV35Kb2UATmWxFj6c5wo2c3nAikhDIQ==
   jwtExpirationMs: 86400000 # 24 hours in milliseconds
   demo-data:
     enabled: true

@@ -9,6 +9,7 @@ import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -85,10 +86,26 @@ public class NotificationService {
         return modelMapper.map(notification, NotificationDTO.class);
     }
 
-    public List<NotificationDTO> getNotificationsByTeacher(String teacherId) {
+    public List<NotificationDTO> getNotificationsByTeacher(String teacherId, String startDate, String endDate) {
         userService.getUserEntityById(teacherId);
-        return notificationRepository.findByTeacherId(teacherId)
-                .stream()
+
+        List<Notification> notifications = notificationRepository.findByTeacherId(teacherId);
+
+        if (startDate != null && !startDate.isBlank()) {
+            LocalDate start = LocalDate.parse(startDate);
+            notifications = notifications.stream()
+                    .filter(n -> !n.getDate().toLocalDate().isBefore(start))
+                    .collect(Collectors.toList());
+        }
+
+        if (endDate != null && !endDate.isBlank()) {
+            LocalDate end = LocalDate.parse(endDate);
+            notifications = notifications.stream()
+                    .filter(n -> !n.getDate().toLocalDate().isAfter(end))
+                    .collect(Collectors.toList());
+        }
+
+        return notifications.stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }

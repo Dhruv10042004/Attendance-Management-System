@@ -32,11 +32,13 @@ public class NotificationController {
 
     // Get notifications by teacher
     @GetMapping("/teacher/{teacherId}")
-    public ResponseEntity<ApiResponse<List<NotificationDTO>>> getNotificationsByTeacher(
-            @PathVariable String teacherId) {
-        List<NotificationDTO> notifications = notificationService.getNotificationsByTeacher(teacherId);
-        return ResponseEntity.ok(new ApiResponse<>(true, "Notifications retrieved successfully", notifications));
-    }
+public ResponseEntity<ApiResponse<List<NotificationDTO>>> getNotificationsByTeacher(
+        @PathVariable String teacherId,
+        @RequestParam(required = false) String startDate,
+        @RequestParam(required = false) String endDate) {
+    List<NotificationDTO> notifications = notificationService.getNotificationsByTeacher(teacherId, startDate, endDate);
+    return ResponseEntity.ok(new ApiResponse<>(true, "Notifications retrieved successfully", notifications));
+}
 
     // Get notifications by student
     @GetMapping("/student/{studentId}")
