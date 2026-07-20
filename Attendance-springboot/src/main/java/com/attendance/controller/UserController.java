@@ -87,7 +87,7 @@ public class UserController {
             LoginResponse response = new LoginResponse(token, userDTO);
             return ResponseEntity.ok(new ApiResponse<>(true, "Login successful", response));
         } catch (Exception e) {
-            // e.printStackTrace(); // TEMPORARY - shows real cause in Render logs
+            e.printStackTrace(); // TEMPORARY - shows real cause in Render logs
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ApiResponse<>(false, "Invalid email or password"));
         }
