@@ -1,4 +1,5 @@
 package com.attendance.controller;
+
 import java.io.IOException;
 import com.attendance.dto.*;
 import com.attendance.entity.User;
@@ -32,6 +33,7 @@ public class UserController {
 
     @Autowired
     private CsvImportService csvImportService;
+
     // Get all users
     @GetMapping
     public ResponseEntity<ApiResponse<List<UserDTO>>> getAllUsers() {
@@ -48,9 +50,9 @@ public class UserController {
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<List<UserDTO>>> searchUsers(
-        @RequestParam String query,
-        @RequestParam(required = false, defaultValue = "all") String role) {
-    List<UserDTO> users = userService.searchUsers(query, role);
+            @RequestParam String query,
+            @RequestParam(required = false, defaultValue = "all") String role) {
+        List<UserDTO> users = userService.searchUsers(query, role);
         return ResponseEntity.ok(new ApiResponse<>(true, "Search completed", users));
     }
 
@@ -85,6 +87,7 @@ public class UserController {
             LoginResponse response = new LoginResponse(token, userDTO);
             return ResponseEntity.ok(new ApiResponse<>(true, "Login successful", response));
         } catch (Exception e) {
+            e.printStackTrace(); // TEMPORARY - shows real cause in Render logs
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ApiResponse<>(false, "Invalid email or password"));
         }
@@ -125,15 +128,15 @@ public class UserController {
     // Bulk create users from CSV
     @PostMapping("/bulk/csv")
     public ResponseEntity<ApiResponse<CsvImportResult>> bulkCreateUsers(
-        @RequestParam("file") MultipartFile file) {
-    try {
-        CsvImportResult result = csvImportService.importUsersFromCsv(file);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new ApiResponse<>(true, "Bulk import completed", result));
-    } catch (IOException e) {
-        return ResponseEntity.badRequest()
-                .body(new ApiResponse<>(false, "Failed to process CSV file: " + e.getMessage()));
-    }
+            @RequestParam("file") MultipartFile file) {
+        try {
+            CsvImportResult result = csvImportService.importUsersFromCsv(file);
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(new ApiResponse<>(true, "Bulk import completed", result));
+        } catch (IOException e) {
+            return ResponseEntity.badRequest()
+                    .body(new ApiResponse<>(false, "Failed to process CSV file: " + e.getMessage()));
+        }
     }
 
     // Get users by role
