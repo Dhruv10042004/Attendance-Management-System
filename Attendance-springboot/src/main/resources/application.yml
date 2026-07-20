@@ -18,8 +18,8 @@ app:
   jwtSecret: ${JWT_SECRET}
   jwtExpirationMs: 86400000
   demo-data:
-    enabled: ${DEMO_DATA_ENABLED:false}
-  base-url: ${APP_BASE_URL:http://localhost:8080}
+    enabled: ${DEMO_DATA_ENABLED}
+  base-url: ${APP_BASE_URL}
   upload:
     dir: ${UPLOAD_DIR:uploads/attendance-proofs}
 
