@@ -79,7 +79,7 @@ const { theme, toggleTheme } = useTheme();
   const [requestDate, setRequestDate] = useState(new Date());
   const [isDateRange, setIsDateRange] = useState(false);
   const [endDate, setEndDate] = useState(null);
-
+  const[submitting,setSubmitting]=useState(false);
   const minDate = new Date();
   const maxDate = new Date();
   maxDate.setDate(minDate.getDate() + 7);
@@ -299,55 +299,60 @@ const { theme, toggleTheme } = useTheme();
   };
 
   const createAttendanceRequest = async () => {
-    if (!createRequestForm.name || !createRequestForm.reason || selectedSubjects.length === 0) {
-      alert('Please fill all required fields');
-      return;
-    }
+  if (!createRequestForm.name || !createRequestForm.reason || selectedSubjects.length === 0) {
+    alert('Please fill all required fields');
+    return;
+  }
 
-    if (!isDateWithinRange(requestDate)) {
-      alert('Please select a date within the next 7 days');
-      return;
-    }
+  if (!isDateWithinRange(requestDate)) {
+    alert('Please select a date within the next 7 days');
+    return;
+  }
 
-    try {
-      const formData = new FormData();
-      formData.append('name', createRequestForm.name);
-      formData.append('reason', createRequestForm.reason);
-      formData.append('student_id', userId);
-      formData.append('date', requestDate.toISOString());
+  if (submitting) return;
+  setSubmitting(true);
 
-      selectedStudents.forEach(student => {
-        if (student.id) {
-          formData.append('student_ids', student.id);
-        }
-      });
+  try {
+    const formData = new FormData();
+    formData.append('name', createRequestForm.name);
+    formData.append('reason', createRequestForm.reason);
+    formData.append('student_id', userId);
+    formData.append('date', requestDate.toISOString());
 
-      formData.append('subjectDatesJson', buildSubjectDatesJson(requestDate, isDateRange ? endDate : null));
-
-      if (proofFile) {
-        formData.append('proof', proofFile);
+    selectedStudents.forEach(student => {
+      if (student.id) {
+        formData.append('student_ids', student.id);
       }
+    });
 
-      await api.post('/attendance-requests', formData);
+    formData.append('subjectDatesJson', buildSubjectDatesJson(requestDate, isDateRange ? endDate : null));
 
-      setCreateRequestForm({ name: '', reason: '' });
-      setProofFile(null);
-      setSelectedStudents([]);
-      setSelectedSubjects([]);
-      setRequestDate(new Date());
-      setIsCreateModalOpen(false);
-
-      window.location.reload();
-
-    } catch (error) {
-      console.error('Error creating attendance request:', error);
-      if (error.response?.data?.message) {
-        alert(`Error: ${error.response.data.message}`);
-      } else {
-        alert('Error creating attendance request. Please try again.');
-      }
+    if (proofFile) {
+      formData.append('proof', proofFile);
     }
-  };
+
+    await api.post('/attendance-requests', formData);
+
+    setCreateRequestForm({ name: '', reason: '' });
+    setProofFile(null);
+    setSelectedStudents([]);
+    setSelectedSubjects([]);
+    setRequestDate(new Date());
+    setIsCreateModalOpen(false);
+
+    window.location.reload();
+
+  } catch (error) {
+    console.error('Error creating attendance request:', error);
+    if (error.response?.data?.message) {
+      alert(`Error: ${error.response.data.message}`);
+    } else {
+      alert('Error creating attendance request. Please try again.');
+    }
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const openEditModal = (request) => {
     setEditingRequest(request);
@@ -1290,9 +1295,9 @@ const { theme, toggleTheme } = useTheme();
                     ${(!createRequestForm.name || !createRequestForm.reason || selectedSubjects.length === 0)
                       ? 'opacity-50 cursor-not-allowed'
                       : ''}`}
-                  disabled={!createRequestForm.name || !createRequestForm.reason || selectedSubjects.length === 0}
+                  disabled={submitting||!createRequestForm.name || !createRequestForm.reason || selectedSubjects.length === 0}
                 >
-                  Create Request
+                  {submitting ? 'Submitting...' : 'Create Request'}
                 </button>
               </div>
             </div>

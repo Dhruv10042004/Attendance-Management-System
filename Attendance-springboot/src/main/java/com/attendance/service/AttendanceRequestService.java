@@ -43,6 +43,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.Objects;
+
 @Service
 public class AttendanceRequestService {
 
@@ -60,50 +61,55 @@ public class AttendanceRequestService {
     private SubjectService subjectService;
     @Autowired
     private MongoTemplate mongoTemplate;
+
     public AttendanceRequest getRequestEntityById(String id) {
-    return attendanceRequestRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
+        return attendanceRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
     }
+
     public List<AttendanceRequestDTO> getAllRequests() {
-    return attendanceRequestRepository.findAll()
-            .stream()
-            .map(this::mapToDTO)
-            .collect(Collectors.toList());
+        return attendanceRequestRepository.findAll()
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
     }
+
     public AttendanceRequestDTO getRequestById(String id) {
-    AttendanceRequest request = attendanceRequestRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
-    return mapToDTO(request);
+        AttendanceRequest request = attendanceRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
+        return mapToDTO(request);
     }
 
     public List<AttendanceRequestDTO> getRequestsByStudentId(String studentId) {
-    userService.getUserEntityById(studentId);
+        userService.getUserEntityById(studentId);
 
-    List<AttendanceRequest> ownRequests = attendanceRequestRepository.findByStudentId(studentId);
-    List<AttendanceRequest> includedRequests = attendanceRequestRepository.findByStudentIdsContaining(studentId);
+        List<AttendanceRequest> ownRequests = attendanceRequestRepository.findByStudentId(studentId);
+        List<AttendanceRequest> includedRequests = attendanceRequestRepository.findByStudentIdsContaining(studentId);
 
-    Map<String, AttendanceRequest> merged = new LinkedHashMap<>();
-    for (AttendanceRequest r : ownRequests) merged.put(r.getId(), r);
-    for (AttendanceRequest r : includedRequests) merged.putIfAbsent(r.getId(), r);
+        Map<String, AttendanceRequest> merged = new LinkedHashMap<>();
+        for (AttendanceRequest r : ownRequests)
+            merged.put(r.getId(), r);
+        for (AttendanceRequest r : includedRequests)
+            merged.putIfAbsent(r.getId(), r);
 
-    return merged.values().stream()
-            .map(this::mapToDTO)
-            .collect(Collectors.toList());
+        return merged.values().stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
     }
 
     public List<AttendanceRequestDTO> getRequestsByStatus(String status) {
-    return attendanceRequestRepository.findByStatus(status)
-            .stream()
-            .map(this::mapToDTO)
-            .collect(Collectors.toList());
+        return attendanceRequestRepository.findByStatus(status)
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
     }
 
     public List<AttendanceRequestDTO> getRequestsByStudentAndStatus(String studentId, String status) {
-    userService.getUserEntityById(studentId);
-    return attendanceRequestRepository.findByStudentIdAndStatus(studentId, status)
-            .stream()
-            .map(this::mapToDTO)
-            .collect(Collectors.toList());
+        userService.getUserEntityById(studentId);
+        return attendanceRequestRepository.findByStudentIdAndStatus(studentId, status)
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
     }
 
     public AttendanceStatsDTO getStudentRequestStats(String studentId) {
@@ -148,23 +154,23 @@ public class AttendanceRequestService {
 
         dto.setSubjectDates(enrichedSubjectDates);
         try {
-    dto.setStudent(userService.getUserById(request.getStudentId()));
-} catch (ResourceNotFoundException e) {
-    dto.setStudent(null);
-}
+            dto.setStudent(userService.getUserById(request.getStudentId()));
+        } catch (ResourceNotFoundException e) {
+            dto.setStudent(null);
+        }
 
-List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
-        ? new ArrayList<>()
-        : request.getStudentIds().stream()
-            .map(id -> {
-                try {
-                    return userService.getUserById(id);
-                } catch (ResourceNotFoundException e) {
-                    return null;
-                }
-            })
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
+        List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
+                ? new ArrayList<>()
+                : request.getStudentIds().stream()
+                        .map(id -> {
+                            try {
+                                return userService.getUserById(id);
+                            } catch (ResourceNotFoundException e) {
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
         dto.setStudents(enrichedStudents);
         return dto;
     }
@@ -178,11 +184,25 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
             String subjectDatesJson,
             MultipartFile proof) throws com.fasterxml.jackson.core.JsonProcessingException {
 
-        User student=userService.getUserEntityById(studentId);
+        User student = userService.getUserEntityById(studentId);
         ObjectMapper mapper = new ObjectMapper();
         List<Map<String, String>> rawSubjectDates = mapper.readValue(
                 subjectDatesJson, new TypeReference<List<Map<String, String>>>() {
                 });
+
+        // Duplicate-submission guard: same student, same reason, same subject/date set,
+        // still pending
+        boolean isDuplicate = attendanceRequestRepository.findByStudentId(studentId).stream()
+                .anyMatch(existing -> "pending".equals(existing.getStatus()) &&
+                        existing.getReason() != null &&
+                        existing.getReason().equals(reason) &&
+                        existing.getCreatedAt() != null &&
+                        existing.getCreatedAt().isAfter(LocalDateTime.now().minusSeconds(30)));
+
+        if (isDuplicate) {
+            throw new BadRequestException(
+                    "A similar request was just submitted. Please wait a moment before resubmitting.");
+        }
 
         List<AttendanceRequest.SubjectDate> subjectDates = new ArrayList<>();
         for (Map<String, String> entry : rawSubjectDates) {
@@ -278,48 +298,49 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
     }
 
     public AttendanceRequestDTO updateRequestStatus(String id, String status) {
-    if (!status.equals("approved") && !status.equals("rejected")) {
-        throw new IllegalArgumentException("Invalid status. Must be 'approved' or 'rejected'");
-    }
-
-    Query query = new Query(Criteria.where("id").is(id).and("status").is("pending"));
-    Update update = new Update().set("status", status).set("updatedAt", LocalDateTime.now());
-
-    AttendanceRequest updated = mongoTemplate.findAndModify(
-            query, update,
-            FindAndModifyOptions.options().returnNew(true),
-            AttendanceRequest.class);
-
-    if (updated == null) {
-        AttendanceRequest existing = attendanceRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
-        throw new BadRequestException("Request is no longer pending (current status: " + existing.getStatus() + ")");
-    }
-
-    if (status.equals("approved")) {
-        List<String> allStudentIds = new ArrayList<>();
-        allStudentIds.add(updated.getStudentId());
-        if (updated.getStudentIds() != null) {
-            allStudentIds.addAll(updated.getStudentIds());
+        if (!status.equals("approved") && !status.equals("rejected")) {
+            throw new IllegalArgumentException("Invalid status. Must be 'approved' or 'rejected'");
         }
 
-        for (AttendanceRequest.SubjectDate sd : updated.getSubjectDates()) {
-            Subject subject = subjectService.getSubjectEntityById(sd.getSubjectId());
+        Query query = new Query(Criteria.where("id").is(id).and("status").is("pending"));
+        Update update = new Update().set("status", status).set("updatedAt", LocalDateTime.now());
 
-            Notification notification = new Notification();
-            notification.setAttendanceRequestId(updated.getId());
-            notification.setTeacherId(subject.getTeacherId());
-            notification.setStudentIds(allStudentIds);
-            notification.setSubjectId(sd.getSubjectId());
-            notification.setDate(sd.getDate());
-            notification.setIsRead(false);
-            notification.setCreatedAt(LocalDateTime.now());
+        AttendanceRequest updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                AttendanceRequest.class);
 
-            notificationRepository.save(notification);
+        if (updated == null) {
+            AttendanceRequest existing = attendanceRequestRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
+            throw new BadRequestException(
+                    "Request is no longer pending (current status: " + existing.getStatus() + ")");
         }
-    }
 
-    return mapToDTO(updated);
+        if (status.equals("approved")) {
+            List<String> allStudentIds = new ArrayList<>();
+            allStudentIds.add(updated.getStudentId());
+            if (updated.getStudentIds() != null) {
+                allStudentIds.addAll(updated.getStudentIds());
+            }
+
+            for (AttendanceRequest.SubjectDate sd : updated.getSubjectDates()) {
+                Subject subject = subjectService.getSubjectEntityById(sd.getSubjectId());
+
+                Notification notification = new Notification();
+                notification.setAttendanceRequestId(updated.getId());
+                notification.setTeacherId(subject.getTeacherId());
+                notification.setStudentIds(allStudentIds);
+                notification.setSubjectId(sd.getSubjectId());
+                notification.setDate(sd.getDate());
+                notification.setIsRead(false);
+                notification.setCreatedAt(LocalDateTime.now());
+
+                notificationRepository.save(notification);
+            }
+        }
+
+        return mapToDTO(updated);
     }
 
     public void deleteRequest(String id) {
@@ -337,21 +358,22 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
     private Cloudinary cloudinary;
 
     private String saveProofFile(MultipartFile file) {
-    try {
-        Map uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
-                "folder", "attendance-proofs",
-                "resource_type", "auto" // handles PDFs, images, etc.
-        ));
-        return (String) uploadResult.get("secure_url");
-    } catch (IOException e) {
-        throw new RuntimeException("Failed to upload proof file: " + e.getMessage(), e);
+        try {
+            Map uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                    "folder", "attendance-proofs",
+                    "resource_type", "auto" // handles PDFs, images, etc.
+            ));
+            return (String) uploadResult.get("secure_url");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to upload proof file: " + e.getMessage(), e);
+        }
     }
-    }
+
     public List<AttendanceRequestDTO> getRequestsByDepartment(String department) {
-    return attendanceRequestRepository.findByDepartment(department)
-            .stream()
-            .map(this::mapToDTO)
-            .collect(Collectors.toList());
+        return attendanceRequestRepository.findByDepartment(department)
+                .stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
     }
 
 }
