@@ -12,6 +12,8 @@ import com.attendance.entity.AttendanceRequest;
 import com.attendance.exception.ResourceNotFoundException;
 import com.attendance.repository.AttendanceRequestRepository;
 import com.attendance.repository.NotificationRepository;
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import com.attendance.entity.Notification;
 import com.attendance.repository.NotificationRepository;
 import com.attendance.entity.Subject;
@@ -331,33 +333,19 @@ List<UserDTO> enrichedStudents = (request.getStudentIds() == null)
 
     @Value("${app.base-url:http://localhost:8080}")
     private String baseUrl;
+    @Autowired
+    private Cloudinary cloudinary;
 
     private String saveProofFile(MultipartFile file) {
-        try {
-            // Ensure the upload directory exists
-            Path uploadPath = Paths.get(uploadDir);
-            if (!Files.exists(uploadPath)) {
-                Files.createDirectories(uploadPath);
-            }
-
-            // Generate a unique filename to avoid collisions
-            String originalFilename = file.getOriginalFilename();
-            String extension = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            }
-            String uniqueFilename = UUID.randomUUID().toString() + extension;
-
-            // Save the file to disk
-            Path targetPath = uploadPath.resolve(uniqueFilename);
-            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-
-            // Return a URL that can be used to access the file
-            return baseUrl + "/api/attendance-requests/proof/" + uniqueFilename;
-
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to store proof file: " + e.getMessage(), e);
-        }
+    try {
+        Map uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                "folder", "attendance-proofs",
+                "resource_type", "auto" // handles PDFs, images, etc.
+        ));
+        return (String) uploadResult.get("secure_url");
+    } catch (IOException e) {
+        throw new RuntimeException("Failed to upload proof file: " + e.getMessage(), e);
+    }
     }
     public List<AttendanceRequestDTO> getRequestsByDepartment(String department) {
     return attendanceRequestRepository.findByDepartment(department)
