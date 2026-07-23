@@ -1,442 +1,228 @@
-# 🎓 Attendance Management System - Complete Migration Summary
+# 🎓 Attendance Management System — Complete Project Summary (Current)
 
-## Project Overview
+## Overview
 
-Your Attendance Management System has been successfully migrated from **Node.js/Express** to **Spring Boot**, while maintaining the same MongoDB database and React frontend. All features have been replicated with clean, production-ready code.
+The system has moved well past the original Node.js→Spring Boot migration. It's now a full department-aware attendance workflow with group requests, Cloudinary-backed file storage, CSV bulk onboarding, and a complete React frontend with four role-specific dashboards. This document replaces the original migration summary.
 
 ---
 
 ## 📁 Project Structure
 
 ```
-📦 Attendance-springboot/
-├── pom.xml                          ✅ Maven dependencies
-├── README.md                        ✅ Setup instructions
-├── start.bat / start.sh             ✅ Quick start scripts
+Attendance-springboot/
+├── Dockerfile                              ✅ multi-stage build (maven → jre), added since migration
+├── pom.xml
 │
-├── 📂 src/main/java/com/attendance/
-│   ├── AttendanceApplication.java   ✅ Main Spring Boot app
+├── src/main/java/com/attendance/
+│   ├── AttendanceApplication.java          ✅ @EnableCaching, ModelMapper bean
+│   ├── config/
+│   │   ├── CorsConfig.java                 (legacy — superseded by SecurityConfig's CORS)
+│   │   ├── SecurityConfig.java             ✅ active CORS + JWT filter chain (currently permitAll)
+│   │   ├── CloudinaryConfig.java           ✅ NEW — Cloudinary client bean
+│   │   ├── MongoIndexConfig.java           ✅ NEW — partial unique index on `sap`
+│   │   └── DemoDataInitializer.java        ✅ NEW — seeds 4 demo accounts, flag-gated
 │   │
-│   ├── 📂 config/
-│   │   ├── CorsConfig.java          ✅ CORS for frontend
-│   │   └── SecurityConfig.java      ✅ JWT & Spring Security
+│   ├── controller/ (4 controllers, 41 endpoints)
+│   │   ├── UserController.java             ✅ 12 endpoints (search + CSV import added)
+│   │   ├── SubjectController.java          ✅ 10 endpoints
+│   │   ├── AttendanceRequestController.java ✅ 10 endpoints (department + proof-file added)
+│   │   └── NotificationController.java     ✅ 9 endpoints (date-range filter added)
 │   │
-│   ├── 📂 controller/ (4 controllers, 39 endpoints)
-│   │   ├── UserController.java      ✅ 11 endpoints
-│   │   ├── SubjectController.java   ✅ 10 endpoints
-│   │   ├── AttendanceRequestController.java  ✅ 9 endpoints
-│   │   └── NotificationController.java       ✅ 9 endpoints
+│   ├── service/ (7 services)
+│   │   ├── UserService.java
+│   │   ├── SubjectService.java             ✅ result caching (@Cacheable/@CacheEvict)
+│   │   ├── AttendanceRequestService.java   ✅ multipart handling, Cloudinary upload, dedupe guard, atomic status transition
+│   │   ├── NotificationService.java        ✅ date-range filtering, enrichment
+│   │   ├── CsvImportService.java           ✅ NEW — bulk user import
+│   │   ├── CustomUserDetailsService.java
+│   │   └── SecurityUtil.java
 │   │
-│   ├── 📂 service/ (6 services)
-│   │   ├── UserService.java         ✅ User management
-│   │   ├── SubjectService.java      ✅ Subject handling
-│   │   ├── AttendanceRequestService.java ✅ Attendance logic
-│   │   ├── NotificationService.java ✅ Notifications
-│   │   ├── CsvImportService.java    ✅ Bulk imports
-│   │   ├── CustomUserDetailsService.java ✅ Spring Security
-│   │   └── SecurityUtil.java        ✅ Auth helpers
+│   ├── entity/ (4 entities)
+│   │   ├── User.java                       ✅ + `department` field
+│   │   ├── Subject.java
+│   │   ├── AttendanceRequest.java          ✅ + `studentIds[]`, `subjectDates[]` (was single subject), `department`
+│   │   └── Notification.java               ✅ `studentIds[]` (list, was singular in the original design)
 │   │
-│   ├── 📂 entity/ (4 entities)
-│   │   ├── User.java                ✅ Implements UserDetails
-│   │   ├── Subject.java             ✅ Timetable
-│   │   ├── AttendanceRequest.java   ✅ Requests
-│   │   └── Notification.java        ✅ Notifications
-│   │
-│   ├── 📂 repository/ (4 repositories)
-│   │   ├── UserRepository.java      ✅ Custom queries
-│   │   ├── SubjectRepository.java   ✅ Custom queries
-│   │   ├── AttendanceRequestRepository.java ✅ Custom queries
-│   │   └── NotificationRepository.java      ✅ Custom queries
-│   │
-│   ├── 📂 dto/ (12 DTOs)
-│   │   ├── UserDTO, UserCreateRequest, UserUpdateRequest
-│   │   ├── LoginRequest, LoginResponse
-│   │   ├── SubjectDTO, SubjectCreateRequest
-│   │   ├── AttendanceRequestDTO, AttendanceRequestCreateRequest
-│   │   ├── AttendanceStatusUpdateRequest
-│   │   ├── NotificationDTO, AttendanceStatsDTO
-│   │   └── ApiResponse (generic wrapper)
-│   │
-│   ├── 📂 security/ (2 security classes)
-│   │   ├── JwtTokenProvider.java    ✅ Token management
-│   │   └── JwtAuthenticationFilter.java ✅ Request filtering
-│   │
-│   └── 📂 exception/ (4 exception handlers)
-│       ├── ResourceNotFoundException.java
-│       ├── BadRequestException.java
-│       ├── ErrorResponse.java
-│       └── GlobalExceptionHandler.java
+│   ├── repository/ (4 repositories, custom finders per entity)
+│   ├── dto/ (16+ DTOs, several enriched: AttendanceRequestDTO.student/students, NotificationDTO.subject/students/reason, SubjectDTO.teacherName)
+│   ├── security/ (JwtTokenProvider, JwtAuthenticationFilter)
+│   └── exception/ (ResourceNotFoundException, BadRequestException, ErrorResponse, GlobalExceptionHandler)
 │
-└── 📂 src/main/resources/
-    └── application.yml              ✅ Configuration
+└── src/main/resources/application.yml       ✅ + Cloudinary vars, demo-data flag
 
-📦 Documentation/
-├── README.md                        ✅ Overview & features
-├── SETUP_GUIDE.md                   ✅ 9-phase setup guide
-├── API_DOCUMENTATION.md             ✅ Complete API reference
-└── DEPLOYMENT_GUIDE.md              ✅ Production deployment
+Attendance-js-frontend/                       ✅ NEW since migration — full React SPA
+├── src/context/ (AuthContext, ThemeContext)
+├── src/components/ (ProtectedRoute, Unauthorized, shadcn/ui primitives)
+├── src/pages/
+│   ├── LoginPage.jsx
+│   ├── AdminDashboard.jsx      (User Management + Timetable Management tabs)
+│   ├── HodDashboard.jsx        (department-scoped request review)
+│   ├── TeacherDashboard.jsx    (date-range absence view)
+│   └── StudentDashboard.jsx    (create/edit/delete own requests, group requests, proof upload)
+└── src/lib/ (api.js — axios w/ JWT + ApiResponse unwrapping, utils.js)
 ```
 
 ---
 
-## ✨ Features Implemented
+## ✨ Features (Current State)
 
 ### ✅ User Management
-- Create, read, update, delete users
-- Role-based access (student, teacher, hod, admin)
-- User search by name
-- Get users by role or class
-- Delete users in bulk by role
-- CSV bulk import support
+- CRUD, role-based (student/teacher/hod/admin), **department** field
+- Search by name/email/SAP, optionally scoped to a role
+- Bulk delete by role
+- **CSV bulk import** (Apache Commons CSV) — creates users, skips existing, reports both lists
 
-### ✅ Authentication & Security
-- JWT token generation (24-hour expiry)
-- Secure password hashing with BCrypt
-- Spring Security integration
-- CORS enabled for React frontend
-- Token validation on protected endpoints
+### ✅ Authentication
+- JWT (HS512, 24h expiry), BCrypt password hashing
+- **⚠️ Authorization is not currently enforced at the endpoint level** — `SecurityConfig` permits all requests; the JWT filter populates the security context but nothing checks it yet. Role gating today lives entirely in the React frontend (`ProtectedRoute`), which is not a security boundary.
 
-### ✅ Subject Management
-- Create subjects with timetable details
-- Assign teachers to subjects
-- View subjects by teacher, class, or day
-- Generate class timetable
-- Search subjects
-- Full CRUD operations
+### ✅ Subject / Timetable Management
+- Full CRUD, per-teacher/class/day views, schedule generator
+- `getSubjectById` is **cached**; writes evict the cache
+- CSV export in the frontend timetable UI (backend CSV *import* for subjects is referenced by the frontend but not present as a controller endpoint — only user CSV import exists server-side)
 
-### ✅ Attendance Request System
-- Students submit attendance requests
-- Multiple subject dates per request
-- Upload proof documents
-- Track request status (pending, approved, rejected)
-- Get request statistics per student
-- Teachers/HOD approve or reject requests
-- Full CRUD operations
+### ✅ Attendance Requests — substantially redesigned
+- A single request can now cover **multiple subjects/dates** (`subjectDates[]`) and **multiple students** (`studentId` owner + `studentIds[]` others), not one subject for one student
+- Create/update take **`multipart/form-data`** (to carry an optional proof file), not JSON
+- Proof files upload to **Cloudinary**, not local disk (the old `UPLOAD_DIR` config and the `/proof/{filename}` controller endpoint are legacy holdovers)
+- **Duplicate-submission guard**: identical pending request (same student + reason) within 30 seconds is rejected
+- **Atomic approve/reject** via `MongoTemplate.findAndModify` — only a `pending` request can transition; re-deciding an already-decided request `400`s
+- **Department** is stamped on each request from the owning student, enabling department-scoped HOD review (`GET /attendance-requests/department/{department}`)
+- Every read enriches `student`/`students`/`subjectDates[].subjectId` into full objects rather than bare ids; missing referenced records degrade to `null` instead of failing the whole response
 
-### ✅ Notification System
-- Create notifications for attendance decisions
-- Track notification read status
-- Get notifications by teacher or student
-- Get unread notifications
-- Link notifications to attendance requests
-- Full CRUD operations
+### ✅ Notifications
+- Created automatically, one per subject/date, **only on approval** (not on rejection), addressed to that subject's teacher
+- Teacher lookup supports optional `startDate`/`endDate` filtering
+- Enriched with resolved `subject`, `students`, and the originating request's `reason`
 
-### ✅ Data Management
-- MongoDB integration with Spring Data
-- Custom repository queries
-- Statistics aggregation
-- Relationships between entities
-- Proper indexing for performance
+### ✅ Frontend (new since the original migration)
+- 4 role dashboards behind `ProtectedRoute`
+- Dark/light theme via `ThemeContext`, persisted to `localStorage`
+- Axios client (`lib/api.js`) auto-attaches the bearer token and **unwraps `ApiResponse.data`** so components work with raw payloads
+- shadcn/ui components (button, dialog, dropdown-menu, select, tabs, table, card, avatar, badge, input, textarea) on Radix primitives, styled with Tailwind v4
 
-### ✅ Error Handling
-- Global exception handler
-- Consistent error response format
-- HTTP status codes
-- Detailed error messages
-
-### ✅ API Response Format
-All endpoints return consistent format:
-```json
-{
-  "success": true/false,
-  "message": "Action description",
-  "data": { /* optional */ }
-}
-```
+### ⚠️ Known Gaps / Inconsistencies
+- No server-side role/permission enforcement (see above)
+- Frontend HOD/Student UIs read/write a `feedbackNote` on approve/reject that the backend **does not persist or return**
+- Two CORS configurations exist (`CorsConfig` and `SecurityConfig`); only the Security one is actually wired into the active filter chain
+- `/attendance-requests/proof/{filename}` (local-disk serving) is effectively dead code post-Cloudinary
+- CSV bulk import exists for users but not for subjects, despite a frontend `importSubjectsCsv`-style call path referenced in `TimetableManagement.jsx`
 
 ---
 
-## 🔗 API Endpoints (39 Total)
+## 🔗 API Endpoints (41 Total)
 
-### Users (11)
+### Users (12)
 ```
-POST   /users/login                - User authentication
-GET    /users                      - Get all users
-GET    /users/{id}                 - Get by ID
-GET    /users/search?query=...     - Search users
-GET    /users/teachers             - Get all teachers
-GET    /users/role/{role}          - Get by role
-GET    /users/class/{className}    - Get by class
-POST   /users                      - Create user
-PUT    /users/{id}                 - Update user
-DELETE /users/{id}                 - Delete user
-DELETE /users/bulk/{role}          - Delete by role
+POST   /users/login
+GET    /users
+GET    /users/{id}
+GET    /users/search?query=&role=
+GET    /users/teachers
+GET    /users/role/{role}
+GET    /users/class/{className}
+POST   /users
+PUT    /users/{id}
+DELETE /users/{id}
+DELETE /users/bulk/{role}
+POST   /users/bulk/csv
 ```
 
 ### Subjects (10)
 ```
-GET    /subjects                   - Get all
-GET    /subjects/{id}              - Get by ID
-GET    /subjects/teacher/{id}      - Get teacher's subjects
-GET    /subjects/class/{name}      - Get class subjects
-GET    /subjects/day/{day}         - Get by day
-GET    /subjects/schedule/{class}/{day} - Get timetable
-GET    /subjects/search?query=...  - Search
-POST   /subjects                   - Create
-PUT    /subjects/{id}              - Update
-DELETE /subjects/{id}              - Delete
+GET    /subjects
+GET    /subjects/{id}
+GET    /subjects/teacher/{teacherId}
+GET    /subjects/class/{className}
+GET    /subjects/day/{day}
+GET    /subjects/schedule/{className}/{day}
+GET    /subjects/search?query=
+POST   /subjects
+PUT    /subjects/{id}
+DELETE /subjects/{id}
 ```
 
-### Attendance Requests (9)
+### Attendance Requests (10)
 ```
-GET    /attendance-requests                    - Get all
-GET    /attendance-requests/{id}               - Get by ID
-GET    /attendance-requests/student/{id}       - Get student's
-GET    /attendance-requests/status/{status}    - Get by status
-GET    /attendance-requests/stats/{id}         - Get statistics
-POST   /attendance-requests                    - Create
-PUT    /attendance-requests/{id}               - Update
-PUT    /attendance-requests/{id}/status        - Change status
-DELETE /attendance-requests/{id}               - Delete
+GET    /attendance-requests
+GET    /attendance-requests/{id}
+GET    /attendance-requests/student/{studentId}
+GET    /attendance-requests/status/{status}
+GET    /attendance-requests/stats/{studentId}
+GET    /attendance-requests/department/{department}
+POST   /attendance-requests             (multipart/form-data)
+PUT    /attendance-requests/{id}        (multipart/form-data)
+PUT    /attendance-requests/{id}/status
+DELETE /attendance-requests/{id}
+GET    /attendance-requests/proof/{filename}
 ```
 
 ### Notifications (9)
 ```
-GET    /notifications                                 - Get all
-GET    /notifications/{id}                            - Get by ID
-GET    /notifications/teacher/{id}                    - Get teacher's
-GET    /notifications/student/{id}                    - Get student's
-GET    /notifications/unread                          - Get unread
-GET    /notifications/attendance-request/{id}         - By request
-POST   /notifications                                 - Create
-PUT    /notifications/{id}/read                       - Mark read
-DELETE /notifications/{id}                            - Delete
+GET    /notifications
+GET    /notifications/{id}
+GET    /notifications/teacher/{teacherId}?startDate=&endDate=
+GET    /notifications/student/{studentId}
+GET    /notifications/unread
+GET    /notifications/attendance-request/{attendanceRequestId}
+POST   /notifications
+PUT    /notifications/{id}/read
+DELETE /notifications/{id}
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites
 ```bash
-# Check installations
-java -version          # Java 17+
-mvn -version          # Maven 3.8+
-node -v               # Node v16+
-npm -v                # npm v7+
-```
-
-### 2. Configure MongoDB
-```yaml
-# application.yml
-spring:
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/attendance_db
-      # OR: mongodb+srv://user:pass@cluster.mongodb.net/db
-```
-
-### 3. Build Project
-```bash
+# Backend
 cd Attendance-springboot
 mvn clean install
-```
+mvn spring-boot:run    # http://localhost:8080/api
 
-### 4. Run Backend
-```bash
-mvn spring-boot:run
-# Backend: http://localhost:8080/api
-```
-
-### 5. Update Frontend
-```typescript
-// frontend/src/lib/api.ts
-const API_BASE_URL = 'http://localhost:8080/api';
-```
-
-### 6. Run Frontend
-```bash
-cd frontend
+# Frontend
+cd Attendance-js-frontend
 npm install
-npm run dev
-# Frontend: http://localhost:5173
+npm run dev             # http://localhost:5173
 ```
 
----
-
-## 🔐 Security Features
-
-✅ JWT Authentication (24-hour expiry)
-✅ Password hashing with BCrypt
-✅ Spring Security integration
-✅ CORS properly configured
-✅ Role-based access control
-✅ Request validation
-✅ Exception handling
-✅ Secure dependencies
+Required backend env vars: `MONGODB_URI`, `JWT_SECRET`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Optional: `PORT`, `DEMO_DATA_ENABLED`, `APP_BASE_URL`.
 
 ---
 
-## 📊 Database Schema
+## 📊 Database Schema (Current)
 
-### Collections
-- `users` - User accounts
-- `subjects` - Class subjects
-- `attendance_requests` - Student requests
-- `notifications` - System notifications
-
-### Indexes
-Created automatically:
-- Email & SAP unique
-- Teacher ID, Class Name
-- Status tracking
-- Read status tracking
+| Collection | Notable fields |
+|---|---|
+| `users` | `+ department`, partial-unique `sap` index |
+| `subjects` | unchanged core shape |
+| `attendance_requests` | `+ studentIds[]`, `subjectDates[]` (replacing a single subject/date pair), `+ department` |
+| `notifications` | `studentIds[]` (list, not singular), `+ attendanceRequestId` |
 
 ---
 
-## 📚 Documentation Provided
+## ✅ Testing Checklist (Updated)
 
-1. **README.md** - Project overview & setup
-2. **SETUP_GUIDE.md** - Step-by-step 9-phase guide
-3. **API_DOCUMENTATION.md** - Complete API reference with examples
-4. **DEPLOYMENT_GUIDE.md** - AWS, Docker, Heroku, GCP deployment
-5. **This File** - Complete migration summary
-
----
-
-## 🔄 Frontend Integration
-
-### Minimal Changes Needed
-Only the API base URL needs updating:
-
-```typescript
-// Change this:
-const API_BASE = 'http://localhost:3001/api'
-
-// To this:
-const API_BASE = 'http://localhost:8080/api'
-```
-
-**All existing React components work as-is!**
+- [ ] Cloudinary credentials valid — proof uploads succeed
+- [ ] Duplicate-submission guard triggers on rapid resubmission
+- [ ] Status transition rejects a second approve/reject on an already-decided request
+- [ ] Department scoping returns correct subset for HOD view
+- [ ] Notification created only on approval, one per subject/date, correct teacher
+- [ ] CSV import skips existing emails/SAPs and reports both lists
+- [ ] Frontend token refresh/expiry handling (currently: no refresh, just re-login on 401)
+- [ ] Confirm whether feedbackNote support should be added server-side or removed client-side
 
 ---
 
-## ✅ Testing Checklist
+## 🎯 Suggested Next Steps
 
-- [ ] MongoDB connection verified
-- [ ] Backend builds without errors
-- [ ] All 39 API endpoints tested
-- [ ] Login returns valid JWT token
-- [ ] CRUD operations work for all entities
-- [ ] Frontend connects successfully
-- [ ] User roles properly enforced
-- [ ] Error responses proper format
-- [ ] CORS headers correct
-- [ ] Database queries optimized
+1. **Close the security gap** — enforce role-based authorization server-side (`SecurityConfig` currently permits everything).
+2. **Resolve the `feedbackNote` mismatch** — either persist it on `AttendanceRequest`/expose it in the DTO, or remove the UI fields.
+3. Consolidate the two CORS configs into one.
+4. Decide the fate of the local-disk proof endpoint (`/attendance-requests/proof/{filename}`) now that Cloudinary is the actual storage backend.
+5. Add subject CSV import to match the user import, or remove the frontend affordance that implies it exists.
+6. Add tests around the atomic status-transition and duplicate-guard logic — both are easy to silently regress.
 
 ---
 
-## 🎯 Next Steps
-
-### Immediate (This Week)
-1. Review all files created
-2. Test APIs with Postman
-3. Integrate frontend (1 line change)
-4. Test complete workflow
-5. Fix any issues
-
-### Short Term (Week 2)
-1. Add file upload for proof documents
-2. Implement email notifications
-3. Add admin dashboard
-4. Set up logging
-5. Create database backups
-
-### Medium Term (Month 1)
-1. Add CSV bulk import UI
-2. Generate attendance reports
-3. Add analytics dashboard
-4. Performance optimization
-5. Production deployment
-
-### Long Term (Production Ready)
-1. Deploy to cloud (AWS/GCP/Azure)
-2. Set up monitoring & alerts
-3. Configure auto-scaling
-4. Enable advanced features
-5. Continuous improvement
-
----
-
-## 📞 Support Resources
-
-### If Backend Won't Start
-1. Check Java version: `java -version`
-2. Check Maven: `mvn -version`
-3. Check MongoDB: `mongosh`
-4. Check logs for errors
-5. Verify application.yml
-
-### If Frontend Can't Connect
-1. Backend running on :8080? `curl http://localhost:8080/api/users`
-2. CORS enabled? Check CorsConfig.java
-3. Correct API URL in frontend?
-4. Check browser console for errors
-
-### If Authentication Fails
-1. JWT secret correct in application.yml
-2. Token being sent in header?
-3. Token not expired?
-4. User exists in database?
-
----
-
-## 📈 Performance Metrics
-
-- ⚡ Average API response: < 100ms
-- 💾 Memory footprint: ~400MB (adjustable)
-- 🗄️ Database query optimization: Indexed
-- 🔒 Security: Enterprise-grade
-- ✅ Code quality: Production-ready
-
----
-
-## 🎓 Learning Resources
-
-### Spring Boot
-- https://spring.io/projects/spring-boot
-- https://baeldung.com/spring-boot
-
-### MongoDB
-- https://docs.mongodb.com/
-- https://www.mongodb.com/docs/drivers/java/
-
-### JWT
-- https://jwt.io/
-- https://tools.ietf.org/html/rfc7519
-
-### Spring Security
-- https://spring.io/projects/spring-security
-- https://baeldung.com/spring-security
-
----
-
-## 📝 Summary
-
-✅ **39 API endpoints** - All functionality replicated
-✅ **Clean architecture** - Service/Repository/Controller layers
-✅ **Security** - JWT + BCrypt + Spring Security
-✅ **Documentation** - 4 comprehensive guides
-✅ **Production-ready** - Error handling, logging, configs
-✅ **Scalable** - MongoDB sharding ready
-✅ **Frontend-compatible** - Minimal changes needed
-✅ **Deployment-ready** - Docker, AWS, Heroku, GCP guides
-
----
-
-## 🎉 Congratulations!
-
-Your Attendance Management System is now fully migrated to **Spring Boot** with **MongoDB** and **React**. The system is:
-
-- ✅ Feature-complete
-- ✅ Production-ready
-- ✅ Well-documented
-- ✅ Easily deployable
-- ✅ Scalable and maintainable
-
-**Ready to go live! 🚀**
-
----
-
-**Last Updated**: 2024-01-15
-**Version**: 1.0.0 (Spring Boot Migration)
+**Last Updated**: reflects current repository state

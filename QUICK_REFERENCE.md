@@ -1,4 +1,4 @@
-# 🚀 Quick Reference Card - Spring Boot Backend
+# 🚀 Quick Reference Card (Current State)
 
 ## Project Basics
 
@@ -8,94 +8,56 @@
 | **Language** | Java 17 |
 | **Build Tool** | Maven |
 | **Database** | MongoDB |
-| **Authentication** | JWT (24-hour) |
-| **Port** | 8080 |
-| **Base URL** | http://localhost:8080/api |
+| **File Storage** | Cloudinary (not local disk) |
+| **Authentication** | JWT (24h) — issued but **not enforced** server-side yet |
+| **Port** | 8080 (`context-path: /api`) |
+| **Base URL** | `http://localhost:8080/api` |
+| **Frontend** | React 18 + Vite + Tailwind v4 + shadcn/ui |
+| **Containerization** | Dockerfile present (multi-stage maven→jre) |
 
 ---
 
 ## Quick Commands
 
 ```bash
-# Build Project
+# Backend
 mvn clean install
-
-# Run Application
 mvn spring-boot:run
-
-# Run Specific Class
-java -cp target/classes:target/lib/* com.attendance.AttendanceApplication
-
-# Build JAR
 mvn clean package -DskipTests
-
-# Run JAR
 java -jar target/attendance-management-system-1.0.0.jar
 
-# Check Logs
-tail -f logs/application.log
+# Docker
+docker build -t attendance-backend ./Attendance-springboot
+docker run -p 8080:8080 --env-file .env attendance-backend
+
+# Frontend
+cd Attendance-js-frontend && npm install && npm run dev
 ```
 
 ---
 
-## File Locations & Structure
-
-```
-Entity Files:           src/main/java/com/attendance/entity/
-Repository Files:       src/main/java/com/attendance/repository/
-Service Files:          src/main/java/com/attendance/service/
-Controller Files:       src/main/java/com/attendance/controller/
-DTO Files:              src/main/java/com/attendance/dto/
-Security Files:         src/main/java/com/attendance/security/
-Config Files:           src/main/java/com/attendance/config/
-Exception Files:        src/main/java/com/attendance/exception/
-Main Application:       src/main/java/com/attendance/AttendanceApplication.java
-Configuration:          src/main/resources/application.yml
-POM File:              pom.xml
-```
-
----
-
-## Key Configuration Settings
-
-```yaml
-# Database Connection (application.yml)
-spring.data.mongodb.uri: mongodb://localhost:27017/attendance_db
-
-# JWT Settings
-app.jwtSecret: your_secret_key_minimum_256_bits
-app.jwtExpirationMs: 86400000
-
-# Server Port
-server.port: 8080
-
-# CORS Origins
-http://localhost:5173, http://localhost:3000
-```
-
----
-
-## Entity Classes (4 Total)
+## Entity Classes (4 Total — fields updated)
 
 | Entity | Collection | Key Fields |
 |--------|-----------|-----------|
-| **User** | users | id, email, sap, role, className |
-| **Subject** | subjects | id, name, teacherId, className, day |
-| **AttendanceRequest** | attendance_requests | id, studentId, status, date |
-| **Notification** | notifications | id, teacherId, studentIds, isRead |
+| **User** | users | id, sap (partial-unique), email (unique), role, className, **department** |
+| **Subject** | subjects | id, name, teacherId, className, day, startTime, endTime |
+| **AttendanceRequest** | attendance_requests | id, studentId, **studentIds[]**, **subjectDates[]** (subjectId+date pairs), status, proof (Cloudinary URL), **department** |
+| **Notification** | notifications | id, teacherId, **studentIds[]** (list), subjectId, attendanceRequestId, isRead |
 
 ---
 
-## Service Classes (6 Total)
+## Service Classes (7 Total)
 
-| Service | Purpose | Key Methods |
+| Service | Purpose | Notable Behavior |
 |---------|---------|-----------|
-| **UserService** | User CRUD | createUser, getUsers, deleteUsersByRole |
-| **SubjectService** | Subject CRUD | createSubject, getByTeacher, getByDay |
-| **AttendanceRequestService** | Request handling | createRequest, updateStatus, getStats |
-| **NotificationService** | Notifications | createNotification, markAsRead |
-| **CsvImportService** | Bulk import | importUsersFromCsv |
-| **CustomUserDetailsService** | Spring Security | loadUserByUsername |
+| **UserService** | User CRUD | uniqueness checks on email + sap |
+| **SubjectService** | Subject CRUD | `getSubjectById` **cached** (`@Cacheable`), writes evict |
+| **AttendanceRequestService** | Request handling | multipart parsing, Cloudinary upload, 30s dedupe guard, atomic `findAndModify` status transition, notification fan-out on approval |
+| **NotificationService** | Notifications | date-range filter, enriches subject/students/reason |
+| **CsvImportService** | Bulk user import | required cols: sap,name,email,password,role; optional: className,department; isFirstLogin always `true` |
+| **CustomUserDetailsService** | Spring Security | loads by email |
+| **SecurityUtil** | Auth helpers | current-user email/role checks |
 
 ---
 
@@ -103,42 +65,52 @@ http://localhost:5173, http://localhost:3000
 
 | Controller | Endpoints | Base Path |
 |-----------|-----------|-----------|
-| **UserController** | 11 | /users |
+| **UserController** | 12 | /users |
 | **SubjectController** | 10 | /subjects |
-| **AttendanceRequestController** | 9 | /attendance-requests |
+| **AttendanceRequestController** | 10 | /attendance-requests |
 | **NotificationController** | 9 | /notifications |
-| **TOTAL** | **39** | - |
+| **TOTAL** | **41** | - |
 
 ---
 
 ## API Response Format
 
 ```json
-{
-  "success": true,
-  "message": "Operation completed",
-  "data": { /* optional */ }
-}
+{ "success": true, "message": "Operation completed", "data": { } }
 ```
+Exception: uncaught / `ResourceNotFoundException` / `BadRequestException` return a bare `ErrorResponse` (no envelope) via `GlobalExceptionHandler`.
 
 ---
 
 ## Authentication Flow
 
 ```
-1. POST /users/login
-   └─ Request: { email, password }
-   └─ Response: { token, user }
-
-2. Store token in localStorage
-
-3. Send in all protected requests
-   └─ Header: Authorization: Bearer <token>
-
-4. JWT validated by JwtAuthenticationFilter
-
-5. User added to SecurityContext
+1. POST /users/login → { token, user }
+2. Frontend stores token + user in localStorage (see AuthContext.jsx)
+3. axios interceptor (lib/api.js) attaches Authorization: Bearer <token>
+   AND unwraps ApiResponse.data automatically — components see raw payloads
+4. JwtAuthenticationFilter validates token, sets SecurityContext
+5. ⚠️ No endpoint currently checks the SecurityContext for authorization —
+   SecurityConfig permits all requests regardless of auth state
 ```
+
+---
+
+## Attendance Request Create/Update — Field Reference
+
+`multipart/form-data`, not JSON:
+
+| Field | Create | Update |
+|---|---|---|
+| `name` | required | optional |
+| `reason` | required | optional |
+| `student_id` | required | n/a (immutable) |
+| `date` | required | optional |
+| `student_ids` | optional, repeatable | optional, repeatable |
+| `subjectDatesJson` | required, JSON string | optional, JSON string |
+| `proof` | optional file | optional file (replaces) |
+
+`subjectDatesJson` shape: `[{"subjectId":"...","date":"2026-07-23T09:00:00"}]`
 
 ---
 
@@ -146,101 +118,63 @@ http://localhost:5173, http://localhost:3000
 
 | Code | Meaning |
 |------|---------|
-| 200 | OK - Success |
-| 201 | Created - Resource created |
-| 400 | Bad Request - Invalid data |
-| 401 | Unauthorized - Auth failed |
-| 404 | Not Found - Resource missing |
-| 500 | Server Error - Backend issue |
-
----
-
-## Most Used Annotations
-
-```java
-@RestController          // REST endpoint class
-@RequestMapping          // Map request paths
-@GetMapping              // GET requests
-@PostMapping             // POST requests
-@PutMapping              // PUT requests
-@DeleteMapping           // DELETE requests
-@PathVariable            // URL path parameter
-@RequestBody             // Request body
-@Service                 // Service class
-@Repository              // Data repository
-@Autowired               // Dependency injection
-@Entity / @Document      // MongoDB document
-@Id                      // Primary key
-@Indexed                 // Database index
-```
-
----
-
-## Dependency Versions
-
-| Dependency | Version |
-|-----------|---------|
-| Spring Boot | 3.2.0 |
-| Java | 17 |
-| MongoDB Driver | Latest (via Spring) |
-| JWT (JJWT) | 0.12.3 |
-| Lombok | 1.18.30 |
-| ModelMapper | 3.1.1 |
-| Apache Commons CSV | 1.10.0 |
-
----
-
-## Database Queries
-
-```javascript
-// MongoDB Shell
-// Connect
-mongo "mongodb://localhost:27017/attendance_db"
-
-// Common Queries
-db.users.find()
-db.users.findOne({ email: "user@example.com" })
-db.attendance_requests.find({ status: "pending" })
-db.notifications.find({ isRead: false })
-
-// Create Indexes
-db.users.createIndex({ email: 1 }, { unique: true })
-db.subjects.createIndex({ teacherId: 1 })
-```
+| 200 | OK |
+| 201 | Created |
+| 400 | Bad Request (business rule, e.g. dup email, invalid status, duplicate request) |
+| 401 | Login failure only |
+| 404 | Not Found |
+| 500 | Server Error |
 
 ---
 
 ## Environment Variables
 
 ```bash
-# Required for Production
-MONGO_URI=mongodb+srv://user:pass@cluster/db
+MONGODB_URI=mongodb+srv://user:pass@cluster/db
 JWT_SECRET=your_production_secret_key
-SERVER_PORT=8080
-JWT_EXPIRATION_MS=86400000
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+PORT=8080
+DEMO_DATA_ENABLED=false
+APP_BASE_URL=https://your-domain.com
 ```
 
 ---
 
-## Testing Endpoints with Postman
+## Demo Accounts (when `DEMO_DATA_ENABLED=true`)
 
-### Login
-```
-POST http://localhost:8080/api/users/login
-Body: { "email": "user@example.com", "password": "pass" }
-```
+| Email | Role | Password |
+|---|---|---|
+| admin@demo.com | admin | Demo@123 |
+| hod@demo.com | hod | Demo@123 |
+| teacher@demo.com | teacher | Demo@123 |
+| student@demo.com | student | Demo@123 |
 
-### Authenticated Request
-```
-GET http://localhost:8080/api/users
-Header: Authorization: Bearer <token>
-```
+---
 
-### Create User
-```
-POST http://localhost:8080/api/users
-Body: { "name": "John", "email": "john@example.com", ... }
-```
+## Frontend Dashboards
+
+| Dashboard | Route | Key Data Source |
+|---|---|---|
+| Admin | `/admin` | `/users`, `/subjects` |
+| HOD | `/hod` | `/attendance-requests/department/{department}` |
+| Teacher | `/teacher` | `/notifications/teacher/{id}?startDate=&endDate=` |
+| Student | `/student` | `/attendance-requests/student/{id}`, `/attendance-requests/stats/{id}` |
+
+All gated by `ProtectedRoute` (client-side only — see Security note).
+
+---
+
+## Known Gaps to Track
+
+| Gap | Where |
+|---|---|
+| No server-side authorization | `SecurityConfig.filterChain` |
+| `feedbackNote` collected in UI but not persisted | Hod/StudentDashboard vs `AttendanceRequestDTO` |
+| Two CORS configs, only one active | `CorsConfig` vs `SecurityConfig` |
+| Local proof-file endpoint effectively dead | `AttendanceRequestController.getProofFile` |
+| No subject CSV import despite frontend hook | `TimetableManagement.jsx` calls `/subjects/import/csv` — no such controller endpoint exists |
 
 ---
 
@@ -248,109 +182,14 @@ Body: { "name": "John", "email": "john@example.com", ... }
 
 | Issue | Solution |
 |-------|----------|
-| Port 8080 in use | Change server.port in application.yml |
-| MongoDB connection failed | Verify connection string and MongoDB is running |
-| JWT token invalid | Check jwtSecret matches and token not expired |
-| CORS error | Check allowed origins in CorsConfig.java |
-| Database not found | Create database in MongoDB Atlas or locally |
+| Port 8080 in use | Set `PORT` env var |
+| MongoDB connection failed | Check `MONGODB_URI` |
+| Proof upload fails | Check all 3 `CLOUDINARY_*` vars |
+| JWT invalid | Check `JWT_SECRET`, token not expired |
+| CORS error | Check origin against `SecurityConfig.corsConfigurationSource` patterns |
+| Duplicate request rejected unexpectedly | By design — same student+reason within 30s is blocked |
+| Status update returns 400 "no longer pending" | Request was already approved/rejected — transitions are one-way |
 
 ---
 
-## Frontend Integration
-
-```typescript
-// Only change needed in React:
-const API_BASE_URL = 'http://localhost:8080/api';
-
-// Then use in all API calls
-fetch(`${API_BASE_URL}/users`)
-```
-
----
-
-## Deployment Quick Links
-
-- **AWS**: `aws elasticbeanstalk create-environment`
-- **Docker**: `docker-compose up --build`
-- **Heroku**: `heroku create && git push heroku main`
-- **GCP**: `gcloud app deploy`
-
----
-
-## Performance Tips
-
-1. **Enable Database Indexing** - Improves query speed
-2. **Use Connection Pooling** - Reuse connections
-3. **Enable Compression** - Reduce response size
-4. **Cache Frequently Accessed Data** - Reduce DB hits
-5. **Monitor Logs** - Catch issues early
-
----
-
-## Security Checklist
-
-- [ ] Change JWT secret
-- [ ] Update MongoDB credentials
-- [ ] Enable HTTPS
-- [ ] Configure firewall
-- [ ] Enable backups
-- [ ] Add rate limiting
-- [ ] Validate all inputs
-- [ ] Use strong passwords
-
----
-
-## Documentation Files
-
-| File | Purpose |
-|------|---------|
-| README.md | Project overview & features |
-| SETUP_GUIDE.md | Step-by-step setup (9 phases) |
-| API_DOCUMENTATION.md | Complete API reference |
-| DEPLOYMENT_GUIDE.md | Cloud deployment options |
-| COMPLETE_SUMMARY.md | Full migration summary |
-
----
-
-## Key Files to Remember
-
-```
-pom.xml                     # All dependencies
-application.yml             # Configuration
-User.java                   # User model (implements UserDetails)
-JwtTokenProvider.java       # Token generation
-UserController.java         # 11 user endpoints
-AttendanceRequestService.java # Business logic
-GlobalExceptionHandler.java # Error handling
-```
-
----
-
-## Useful Links
-
-- **Spring Boot Docs**: https://spring.io/projects/spring-boot
-- **MongoDB Docs**: https://docs.mongodb.com/
-- **JWT Docs**: https://jwt.io/
-- **Spring Security**: https://spring.io/projects/spring-security
-- **Postman**: https://www.postman.com/
-
----
-
-## Final Checklist Before Production
-
-- [ ] All 39 endpoints tested
-- [ ] Frontend successfully connected
-- [ ] Database backups configured
-- [ ] Logging enabled
-- [ ] Error handling working
-- [ ] JWT secret changed
-- [ ] CORS properly configured
-- [ ] Performance optimized
-- [ ] Security audit passed
-- [ ] Documentation complete
-
----
-
-**Ready to Deploy! 🚀**
-
-Keep this reference handy for quick lookups!
+**Ready for review — reflects current repository state, not the original migration snapshot.**

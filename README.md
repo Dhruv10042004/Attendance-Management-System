@@ -1,382 +1,225 @@
-# Attendance Management System
+# Attendance Management System — Project Guide (Current State)
 
-A full-stack attendance management platform for educational institutions. Students raise attendance/leave requests, teachers get notified when their students will be absent, and HODs/Admins manage users, timetables, and approvals.
-
-The project is split into two folders:
-
-```
-├── Attendance-springboot/     # Java Spring Boot REST API + MongoDB
-├── Attendance-js-frontend/    # React (Vite) single-page application
-└── README.md                  # You are here
-```
-
----
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Tech Stack](#tech-stack)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Backend Setup (Attendance-springboot)](#backend-setup-attendance-springboot)
-- [Frontend Setup (Attendance-js-frontend)](#frontend-setup-attendance-js-frontend)
-- [Environment Variables](#environment-variables)
-- [Running Both Together](#running-both-together)
-- [API Reference](#api-reference)
-- [User Roles](#user-roles)
-- [Troubleshooting](#troubleshooting)
-
----
-
-## Overview
-
-This system digitizes the attendance/leave-request workflow for a college or school:
-
-1. **Students** submit an attendance request (with reason, subjects/dates, optional proof document) — either for themselves or as a group with classmates.
-2. **HODs** review, approve, or reject requests for their department.
-3. **Teachers** see which of their students will be absent for their classes, filtered by date range.
-4. **Admins** manage user accounts (single or bulk CSV import), roles, and departments, and maintain the class timetable.
-
-## Tech Stack
-
-**Backend**
-- Java 17, Spring Boot 3.2
-- Spring Web, Spring Security (JWT-based auth), Spring Data MongoDB
-- MongoDB (Atlas or local)
-- Cloudinary (attendance proof file storage)
-- ModelMapper, Lombok, Apache Commons CSV
-- Maven
-
-**Frontend**
-- React 18 (Vite)
-- React Router
-- Axios
-- Tailwind CSS (v4) + shadcn/ui-style components (Radix primitives)
-- react-hook-form, react-datepicker, date-fns, lucide-react icons
-
----
-
-## Features
-
-✅ JWT-based authentication & role-based access (student, teacher, hod, admin)
-✅ User management — create, update, delete, search, filter, bulk CSV import/export, bulk delete by role
-✅ Timetable/subject management per class and day
-✅ Attendance/leave request creation (single or grouped students), with proof upload via Cloudinary
-✅ Approve/reject workflow with automatic teacher notifications
-✅ Department-scoped views for HOD dashboard
-✅ Attendance statistics per student (total/approved/rejected/pending)
-✅ Dark/light theme toggle on the frontend
-
----
+> This reflects the system as it stands today, not the original Node→Spring Boot migration snapshot. Several things changed after that first migration: file storage moved to Cloudinary, attendance requests became multi-student/multi-subject with department scoping, CSV bulk import was added, subject lookups are cached, and a full React frontend (4 role-based dashboards) was built on top.
 
 ## Project Structure
 
 ```
 Attendance-springboot/
-├── src/main/java/com/attendance/
-│   ├── AttendanceApplication.java
-│   ├── config/            # CORS, Security, Cloudinary, Mongo indexes, demo data seeding
-│   ├── controller/        # REST controllers (Users, Subjects, AttendanceRequests, Notifications)
-│   ├── service/            # Business logic
-│   ├── entity/             # MongoDB documents (User, Subject, AttendanceRequest, Notification)
-│   ├── repository/         # Spring Data Mongo repositories
-│   ├── dto/                 # Request/response DTOs
-│   ├── security/            # JWT provider + filter
-│   └── exception/            # Custom exceptions + global exception handler
-├── src/main/resources/
-│   └── application.yml       # Configuration (reads from environment variables)
-├── Dockerfile
-└── pom.xml
-
-Attendance-js-frontend/
-├── src/
-│   ├── components/          # Shared UI (shadcn-style components) + ProtectedRoute
-│   ├── context/              # AuthContext, ThemeContext
-│   ├── lib/                   # axios instance (api.js), utils
-│   ├── pages/                  # LoginPage + one dashboard per role
-│   └── App.jsx, main.jsx
-└── package.json
+├── Dockerfile                                   # Multi-stage build (maven → jre)
+├── src/main/
+│   ├── java/com/attendance/
+│   │   ├── AttendanceApplication.java           # @EnableCaching + ModelMapper bean
+│   │   ├── config/
+│   │   │   ├── CorsConfig.java                  # WebMvcConfigurer CORS (legacy, superseded below)
+│   │   │   ├── SecurityConfig.java              # JWT filter chain + active CORS source
+│   │   │   ├── CloudinaryConfig.java             # Cloudinary client bean
+│   │   │   ├── MongoIndexConfig.java             # Partial unique index on `sap`
+│   │   │   └── DemoDataInitializer.java          # Seeds demo accounts (feature-flagged)
+│   │   ├── controller/
+│   │   │   ├── UserController.java              # 12 endpoints incl. search + CSV import
+│   │   │   ├── SubjectController.java            # 10 endpoints
+│   │   │   ├── AttendanceRequestController.java  # 10 endpoints incl. department + proof
+│   │   │   └── NotificationController.java       # 9 endpoints incl. date-range filter
+│   │   ├── service/
+│   │   │   ├── UserService.java
+│   │   │   ├── SubjectService.java               # @Cacheable getSubjectById
+│   │   │   ├── AttendanceRequestService.java      # multipart handling, Cloudinary upload
+│   │   │   ├── NotificationService.java
+│   │   │   ├── CsvImportService.java              # bulk user import
+│   │   │   ├── CustomUserDetailsService.java
+│   │   │   └── SecurityUtil.java
+│   │   ├── entity/
+│   │   │   ├── User.java                         # implements UserDetails, has `department`
+│   │   │   ├── Subject.java
+│   │   │   ├── AttendanceRequest.java             # studentIds[], subjectDates[], department
+│   │   │   └── Notification.java                 # studentIds[] (not singular)
+│   │   ├── repository/
+│   │   ├── dto/
+│   │   ├── security/
+│   │   └── exception/
+│   └── resources/
+│       └── application.yml                       # + Cloudinary + demo-data flag
+├── pom.xml
+└── Attendance-js-frontend/                       # React 18 + Vite frontend
 ```
-
----
 
 ## Prerequisites
 
-- **Java 17+**
-- **Maven 3.8+**
-- **Node.js 18+** and npm
-- **MongoDB** — local instance or a free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cluster
-- A **Cloudinary** account (free tier works) — used to store attendance proof uploads
+- Java 17+, Maven 3.8+
+- MongoDB (local or Atlas)
+- A Cloudinary account (cloud name, API key, API secret) — proof documents are uploaded there, not saved to local disk
+- Node.js & npm for the frontend
 
----
+## Backend Setup
 
-## Backend Setup (Attendance-springboot)
+### 1. Configure `application.yml`
 
-1. **Navigate to the backend folder**
+The real config now pulls everything from environment variables (see `application.yml`, not the old `.example` template):
 
-   ```bash
-   cd Attendance-springboot
-   ```
+```yaml
+spring:
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
 
-2. **Create your configuration file**
+server:
+  port: ${PORT:8080}
+  servlet:
+    context-path: /api
 
-   Copy the example file and fill in your own values:
+app:
+  jwtSecret: ${JWT_SECRET}
+  jwtExpirationMs: 86400000
+  demo-data:
+    enabled: ${DEMO_DATA_ENABLED}
+  base-url: ${APP_BASE_URL}
+  upload:
+    dir: ${UPLOAD_DIR:uploads/attendance-proofs}   # legacy path, mostly unused now (see Cloudinary note)
 
-   ```bash
-   cp src/main/resources/application.yml.example src/main/resources/application.yml
-   ```
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
+```
 
-   > Note: `application.yml` is git-ignored — never commit real secrets to it. See [Environment Variables](#environment-variables) below for what each value means. In production, the values are read from environment variables (`${VAR_NAME}` placeholders already exist in the file), so on Render/Railway/Heroku-style hosts you just need to set the env vars — no need to edit the file.
+Required env vars: `MONGODB_URI`, `JWT_SECRET`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Optional: `PORT`, `DEMO_DATA_ENABLED`, `APP_BASE_URL`, `UPLOAD_DIR`.
 
-3. **Set the required environment variables** (locally, you can export them in your shell or use an `.env`-loading tool of your choice):
+### 2. Demo data (optional)
 
-   | Variable | Description |
-   |---|---|
-   | `MONGODB_URI` | MongoDB connection string, e.g. `mongodb://localhost:27017/attendance_db` or an Atlas SRV URI |
-   | `JWT_SECRET` | A long, random string (256-bit minimum) used to sign JWTs |
-   | `PORT` | Port the server listens on (defaults to `8080`) |
-   | `DEMO_DATA_ENABLED` | `true`/`false` — seeds demo accounts on startup (see below) |
-   | `APP_BASE_URL` | Public base URL of the backend, e.g. `http://localhost:8080` |
-   | `UPLOAD_DIR` | Local fallback folder for uploads (defaults to `uploads/attendance-proofs`) |
-   | `CLOUDINARY_CLOUD_NAME` | Cloudinary account cloud name |
-   | `CLOUDINARY_API_KEY` | Cloudinary API key |
-   | `CLOUDINARY_API_SECRET` | Cloudinary API secret |
+If `DEMO_DATA_ENABLED=true`, `DemoDataInitializer` seeds four accounts on startup (admin/hod/teacher/student), all with password `Demo@123`, skipping any that already exist by email:
 
-4. **Build and run**
+| Email | Role | SAP |
+|---|---|---|
+| admin@demo.com | admin | DEMO-ADMIN |
+| hod@demo.com | hod | DEMO-HOD |
+| teacher@demo.com | teacher | DEMO-TEACHER |
+| student@demo.com | student | DEMO-STUDENT |
 
-   ```bash
-   mvn clean install
-   mvn spring-boot:run
-   ```
+### 3. Build & Run
 
-   Or open the project in your IDE and run `AttendanceApplication.java` directly.
+```bash
+mvn clean install
+mvn spring-boot:run
+```
 
-   The API will be available at:
+Or with Docker:
 
-   ```
-   http://localhost:8080/api
-   ```
+```bash
+docker build -t attendance-backend .
+docker run -p 8080:8080 --env-file .env attendance-backend
+```
 
-5. **(Optional) Seed demo accounts**
-
-   Set `DEMO_DATA_ENABLED=true` before starting the app to auto-create one demo account per role (all use the password `Demo@123`):
-
-   | Role | Email |
-   |---|---|
-   | Admin | `admin@demo.com` |
-   | HOD | `hod@demo.com` |
-   | Teacher | `teacher@demo.com` |
-   | Student | `student@demo.com` |
-
-6. **(Optional) Run with Docker**
-
-   A `Dockerfile` is included and builds a self-contained runtime image:
-
-   ```bash
-   docker build -t attendance-backend .
-   docker run -p 8080:8080 --env-file .env attendance-backend
-   ```
-
----
+Backend serves at `http://localhost:8080/api`.
 
 ## Frontend Setup (Attendance-js-frontend)
 
-1. **Navigate to the frontend folder**
-
-   ```bash
-   cd Attendance-js-frontend
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Point the frontend at your backend**
-
-   The API base URL is read from `VITE_API_BASE_URL` and defaults to `http://localhost:8080/api` (see `src/lib/api.js`). To override it, create a `.env` file in `Attendance-js-frontend/`:
-
-   ```
-   VITE_API_BASE_URL=http://localhost:8080/api
-   ```
-
-4. **Run the dev server**
-
-   ```bash
-   npm run dev
-   ```
-
-   The app will be available at:
-
-   ```
-   http://localhost:5173
-   ```
-
-5. **Build for production**
-
-   ```bash
-   npm run build
-   npm run preview   # to locally preview the production build
-   ```
-
----
-
-## Environment Variables
-
-### Backend (`Attendance-springboot`)
-
-| Variable | Required | Example |
-|---|---|---|
-| `MONGODB_URI` | ✅ | `mongodb+srv://user:pass@cluster.mongodb.net/attendance_db` |
-| `JWT_SECRET` | ✅ | a random 256-bit+ string |
-| `PORT` | ❌ | `8080` |
-| `DEMO_DATA_ENABLED` | ❌ | `true` / `false` |
-| `APP_BASE_URL` | ❌ | `http://localhost:8080` |
-| `UPLOAD_DIR` | ❌ | `uploads/attendance-proofs` |
-| `CLOUDINARY_CLOUD_NAME` | ✅ | from your Cloudinary dashboard |
-| `CLOUDINARY_API_KEY` | ✅ | from your Cloudinary dashboard |
-| `CLOUDINARY_API_SECRET` | ✅ | from your Cloudinary dashboard |
-
-### Frontend (`Attendance-js-frontend`)
-
-| Variable | Required | Example |
-|---|---|---|
-| `VITE_API_BASE_URL` | ❌ (defaults to `http://localhost:8080/api`) | `https://your-backend.onrender.com/api` |
-
----
-
-## Running Both Together
-
-From the project root, two convenience scripts are provided that install dependencies and start both servers:
-
-- **Windows:** `Attendance-springboot/start.bat`
-- **macOS/Linux:** `Attendance-springboot/start.sh`
+Stack: React 18 + Vite, Tailwind CSS v4, shadcn/ui components on Radix primitives (`dialog`, `dropdown-menu`, `avatar`, `select`, `tabs`, `slot`), `react-hook-form`, `react-datepicker`, `date-fns`, `lodash`, `axios`.
 
 ```bash
-# macOS/Linux
-cd Attendance-springboot
-chmod +x start.sh
-./start.sh
+cd Attendance-js-frontend
+npm install
+npm run dev
 ```
 
-This starts:
-- Backend on `http://localhost:8080/api`
-- Frontend on `http://localhost:5173`
+`src/lib/api.js` points to `VITE_API_BASE_URL` (defaults to `http://localhost:8080/api`), attaches the JWT bearer token automatically, and **unwraps the `ApiResponse` envelope** — every component receives `response.data` as the raw payload (array/object), not `{success, message, data}`.
 
----
+### Role-based dashboards
 
-## API Reference
+- **AdminDashboard** — tabs for User Management (search/filter/add/bulk-CSV-add/bulk-delete-by-role) and Timetable Management (weekly grid, per-class/day, CSV export/import).
+- **HodDashboard** — sees all attendance requests scoped to their own `department` via `GET /attendance-requests/department/{department}`, approves/rejects with a feedback note (UI field only — see note below).
+- **TeacherDashboard** — date-range view of student absences, grouped by subject + date, pulled from `GET /notifications/teacher/{id}?startDate=&endDate=`.
+- **StudentDashboard** — create/edit/delete their own requests; can select multiple subjects, a single date or a date range, add other students to the same request ("buddy" requests), and attach a proof file.
 
-All backend routes are prefixed with `/api` (set via `server.servlet.context-path`).
+> **Known frontend/backend mismatch:** the HOD and Student UIs read/write a `feedbackNote` field when approving/rejecting requests, but the backend's `AttendanceRequestDTO` / `updateRequestStatus` do not currently persist or return one. That note is dropped silently today.
 
-### Users — `/api/users`
+## API Endpoints (current)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/login` | Authenticate, returns JWT + user |
-| GET | `/` | List all users |
-| GET | `/{id}` | Get user by ID |
-| GET | `/search?query=&role=` | Search users by name/email/SAP, optionally filtered by role |
-| GET | `/teachers` | List all teachers |
-| GET | `/role/{role}` | List users by role |
-| GET | `/class/{className}` | List users by class |
-| POST | `/` | Create a user |
-| PUT | `/{id}` | Update a user |
-| DELETE | `/{id}` | Delete a user |
-| DELETE | `/bulk/{role}` | Delete all users with a given role |
-| POST | `/bulk/csv` | Bulk-create users from an uploaded CSV file |
-
-### Subjects — `/api/subjects`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/` | List all subjects |
-| GET | `/{id}` | Get subject by ID |
-| GET | `/teacher/{teacherId}` | Subjects taught by a teacher |
-| GET | `/class/{className}` | Subjects for a class |
-| GET | `/day/{day}` | Subjects on a given day |
-| GET | `/schedule/{className}/{day}` | Timetable for class + day |
-| GET | `/search?query=` | Search subjects by name |
-| POST | `/` | Create a subject |
-| PUT | `/{id}` | Update a subject |
-| DELETE | `/{id}` | Delete a subject |
-
-### Attendance Requests — `/api/attendance-requests`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/` | List all requests |
-| GET | `/{id}` | Get request by ID |
-| GET | `/student/{studentId}` | Requests owned by or including a student |
-| GET | `/status/{status}` | Filter by status (`pending`/`approved`/`rejected`) |
-| GET | `/department/{department}` | Filter by department |
-| GET | `/stats/{studentId}` | Aggregate stats for a student |
-| POST | `/` | Create a request (multipart form: name, reason, student_id, date, student_ids[], subjectDatesJson, proof file) |
-| PUT | `/{id}` | Update a request (multipart form) |
-| PUT | `/{id}/status` | Approve/reject a request |
-| DELETE | `/{id}` | Delete a request |
-| GET | `/proof/{filename}` | Serve a locally-stored proof file (Cloudinary URLs are served directly) |
-
-### Notifications — `/api/notifications`
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/` | List all notifications |
-| GET | `/{id}` | Get notification by ID |
-| GET | `/teacher/{teacherId}?startDate=&endDate=` | Teacher's notifications, optionally date-filtered |
-| GET | `/student/{studentId}` | Student's notifications |
-| GET | `/unread` | Unread notifications |
-| GET | `/attendance-request/{attendanceRequestId}` | Notifications tied to a request |
-| POST | `/` | Create a notification |
-| PUT | `/{id}/read` | Mark as read |
-| DELETE | `/{id}` | Delete a notification |
-
-All endpoints return a consistent envelope:
-
-```json
-{
-  "success": true,
-  "message": "Human readable message",
-  "data": { }
-}
+### Users — `/users` (12)
+```
+POST   /users/login                  # returns JWT + UserDTO
+GET    /users
+GET    /users/{id}
+GET    /users/search?query=&role=    # role defaults to "all"
+GET    /users/teachers
+GET    /users/role/{role}
+GET    /users/class/{className}
+POST   /users
+PUT    /users/{id}
+DELETE /users/{id}
+DELETE /users/bulk/{role}
+POST   /users/bulk/csv               # multipart "file"
 ```
 
+### Subjects — `/subjects` (10)
+```
+GET    /subjects
+GET    /subjects/{id}                # @Cacheable("subjects")
+GET    /subjects/teacher/{teacherId}
+GET    /subjects/class/{className}
+GET    /subjects/day/{day}
+GET    /subjects/schedule/{className}/{day}
+GET    /subjects/search?query=
+POST   /subjects
+PUT    /subjects/{id}                # @CacheEvict
+DELETE /subjects/{id}                # @CacheEvict
+```
+
+### Attendance Requests — `/attendance-requests` (10)
+```
+GET    /attendance-requests
+GET    /attendance-requests/{id}
+GET    /attendance-requests/student/{studentId}     # own + "included in" requests, merged
+GET    /attendance-requests/status/{status}
+GET    /attendance-requests/stats/{studentId}
+GET    /attendance-requests/department/{department}  # NEW — HOD view
+POST   /attendance-requests           # multipart/form-data, not JSON — see API docs
+PUT    /attendance-requests/{id}      # multipart/form-data
+PUT    /attendance-requests/{id}/status
+DELETE /attendance-requests/{id}
+GET    /attendance-requests/proof/{filename}   # legacy local-disk fallback, unused in practice
+```
+
+### Notifications — `/notifications` (9)
+```
+GET    /notifications
+GET    /notifications/{id}
+GET    /notifications/teacher/{teacherId}?startDate=&endDate=   # NEW date filters
+GET    /notifications/student/{studentId}
+GET    /notifications/unread
+GET    /notifications/attendance-request/{attendanceRequestId}
+POST   /notifications
+PUT    /notifications/{id}/read
+DELETE /notifications/{id}
+```
+
+## What Changed Since the First Migration
+
+- ✅ **Cloudinary** replaces local disk storage for proof documents (`AttendanceRequestService.saveProofFile`); `application.yml.example`'s `UPLOAD_DIR` path is now vestigial.
+- ✅ **Department** added to `User` and `AttendanceRequest`; HOD dashboards filter by it.
+- ✅ **Bulk/group attendance requests**: a request now carries `studentIds[]` (other students included) alongside the primary `studentId`, and `subjectDates[]` (multiple subject+date pairs) instead of one subject.
+- ✅ **Attendance request create/update moved to `multipart/form-data`** (to support the proof file upload) — no longer plain JSON bodies.
+- ✅ **CSV bulk user import** (`/users/bulk/csv`) using Apache Commons CSV.
+- ✅ **Caching** on `SubjectService.getSubjectById` via Spring Cache (`@EnableCaching` in `AttendanceApplication`).
+- ✅ **Duplicate-submission guard**: rejects a new request if an identical pending one (same student + reason) was created in the last 30 seconds.
+- ✅ **Atomic status transitions**: `updateRequestStatus` uses `MongoTemplate.findAndModify` so only a currently-`pending` request can move to approved/rejected; notifications are only generated on approval, one per subject/date, addressed to that subject's teacher.
+- ✅ **Partial unique index** on `sap` (only enforced when `sap` is non-empty) via `MongoIndexConfig`, so teachers/HODs/admins without a SAP number don't collide on `null`.
+- ⚠️ **Security is currently wide open**: `SecurityConfig.filterChain` calls `.anyRequest().permitAll()`. The JWT filter still runs and populates the security context, but no endpoint actually enforces authentication/roles yet — this is a known gap, not a design goal.
+- ⚠️ **Two CORS configs exist**: `CorsConfig` (WebMvcConfigurer) and `SecurityConfig`'s own `corsConfigurationSource`. The Security one is what's actually active for the filter chain (allows `localhost:*`, `192.168.*.*:*`, `*.vercel.app`).
+- ✅ Full **React frontend** built: 4 role dashboards, dark/light theme, shadcn/ui components.
+
+## Common Issues
+
+**MongoDB connection failed** — verify `MONGODB_URI`.
+**Cloudinary upload failing** — verify all three `CLOUDINARY_*` env vars are set; `saveProofFile` throws a `RuntimeException` wrapping the IOException if the upload fails.
+**Port in use** — set `PORT` env var.
+**JWT errors** — check `JWT_SECRET` is set and at least 256 bits.
+**CORS blocked** — confirm your frontend origin matches the patterns in `SecurityConfig.corsConfigurationSource`.
+
 ---
-
-## User Roles
-
-| Role | Dashboard route | Capabilities |
-|---|---|---|
-| `admin` | `/admin` | Manage users (CRUD, bulk import/delete), manage timetable |
-| `hod` | `/hod` | Review and approve/reject attendance requests for their department |
-| `teacher` | `/teacher` | View student absences for their subjects within a date range |
-| `student` | `/student` | Submit, edit, and delete their own attendance requests; view status |
-
-Login redirects users to the correct dashboard automatically based on their role, and unauthorized role access redirects to `/unauthorized`.
-
----
-
-## Troubleshooting
-
-**MongoDB connection failed**
-Ensure MongoDB is running locally, or that your Atlas connection string, username/password, and IP allowlist are correct.
-
-**Port already in use**
-Change `PORT` (backend) or run Vite on a different port with `npm run dev -- --port 5174`.
-
-**401 Unauthorized on the frontend**
-Confirm the JWT is being stored and sent — check `localStorage` for a `token` key and that `VITE_API_BASE_URL` points at the running backend.
-
-**CSV bulk import skips rows**
-Rows are skipped if the email or SAP ID already exists, or if a required column is missing. Check the returned `skipped` list in the API response for the reason per row.
-
-**Proof file upload fails**
-Verify `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` are set correctly.
-
----
-
-## License
-
-This project does not currently declare a license. Add one (e.g. MIT) if you plan to share or open-source it.
+**Backend:** Spring Boot 3.2.0 · Java 17 · MongoDB · JWT · Cloudinary
+**Frontend:** React 18 · Vite · Tailwind v4 · shadcn/ui
