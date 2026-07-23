@@ -51,7 +51,7 @@ public class AttendanceRequestService {
     private AttendanceRequestRepository attendanceRequestRepository;
 
     @Autowired
-    private ModelMapper modelMapper;
+    private SecurityUtil securityUtil;
 
     @Autowired
     private UserService userService;
@@ -251,6 +251,19 @@ public class AttendanceRequestService {
         AttendanceRequest attendanceRequest = attendanceRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
 
+        // Ownership check: only the requesting student (owner) or an admin can edit
+        String currentUserId = securityUtil.getCurrentUserId();
+        boolean isOwner = attendanceRequest.getStudentId().equals(currentUserId);
+        boolean isAdmin = securityUtil.hasRole("admin");
+        if (!isOwner && !isAdmin) {
+            throw new BadRequestException("You do not have permission to modify this request");
+        }
+
+        // Only pending requests should be editable by the student
+        if (!isAdmin && !"pending".equals(attendanceRequest.getStatus())) {
+            throw new BadRequestException("Only pending requests can be edited");
+        }
+
         if (name != null)
             attendanceRequest.setName(name);
         if (reason != null)
@@ -302,6 +315,18 @@ public class AttendanceRequestService {
             throw new IllegalArgumentException("Invalid status. Must be 'approved' or 'rejected'");
         }
 
+        // Fetch first (read-only) so we can check department before mutating anything
+        AttendanceRequest existing = attendanceRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
+
+        boolean isAdmin = securityUtil.hasRole("admin");
+        if (!isAdmin) {
+            String callerDepartment = securityUtil.getCurrentUserDepartment();
+            if (callerDepartment == null || !callerDepartment.equalsIgnoreCase(existing.getDepartment())) {
+                throw new BadRequestException("You do not have permission to review requests outside your department");
+            }
+        }
+
         Query query = new Query(Criteria.where("id").is(id).and("status").is("pending"));
         Update update = new Update().set("status", status).set("updatedAt", LocalDateTime.now());
 
@@ -311,8 +336,6 @@ public class AttendanceRequestService {
                 AttendanceRequest.class);
 
         if (updated == null) {
-            AttendanceRequest existing = attendanceRequestRepository.findById(id)
-                    .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
             throw new BadRequestException(
                     "Request is no longer pending (current status: " + existing.getStatus() + ")");
         }
@@ -346,6 +369,18 @@ public class AttendanceRequestService {
     public void deleteRequest(String id) {
         AttendanceRequest request = attendanceRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Attendance request not found with id: " + id));
+
+        String currentUserId = securityUtil.getCurrentUserId();
+        boolean isOwner = request.getStudentId().equals(currentUserId);
+        boolean isAdmin = securityUtil.hasRole("admin");
+        if (!isOwner && !isAdmin) {
+            throw new BadRequestException("You do not have permission to delete this request");
+        }
+
+        if (!isAdmin && !"pending".equals(request.getStatus())) {
+            throw new BadRequestException("Only pending requests can be deleted");
+        }
+
         attendanceRequestRepository.delete(request);
     }
 

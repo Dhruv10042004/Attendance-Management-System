@@ -1,5 +1,6 @@
 package com.attendance.service;
 
+import com.attendance.entity.User;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -21,15 +22,30 @@ public class SecurityUtil {
         return null;
     }
 
+    // FIXED: was returning email, now returns the actual Mongo _id
     public String getCurrentUserId() {
-        // This would typically be extracted from the JWT token
-        // For now, we return the email as identifier
-        return getCurrentUserEmail();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof User user) {
+            return user.getId();
+        }
+        return null;
     }
 
     public boolean hasRole(String role) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null)
+            return false;
         return authentication.getAuthorities().stream()
                 .anyMatch(auth -> auth.getAuthority().equals("ROLE_" + role.toUpperCase()));
+    }
+
+    public String getCurrentUserDepartment() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && authentication.getPrincipal() instanceof User user) {
+            return user.getDepartment();
+        }
+        return null;
     }
 }

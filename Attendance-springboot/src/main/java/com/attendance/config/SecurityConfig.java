@@ -1,4 +1,6 @@
 package com.attendance.config;
+
+import org.springframework.http.HttpMethod;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import com.attendance.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
@@ -64,11 +66,52 @@ public class SecurityConfig {
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeHttpRequests(authz -> authz
-                        .requestMatchers("/api/users/login", "/api/users", "/api/users/bulk/csv").permitAll()
-                        .requestMatchers("/api/users/search", "/api/users/teachers").permitAll()
-                        .requestMatchers("/api/users/**").permitAll()
-                        .requestMatchers("/api/**").permitAll()
-                        .anyRequest().permitAll());
+                        // --- Public ---
+                        .requestMatchers(HttpMethod.POST, "/api/users/login").permitAll()
+
+                        // --- Users ---
+                        .requestMatchers(HttpMethod.POST, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/users/bulk/csv").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/users/bulk/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/users/search", "/api/users/role/**", "/api/users/class/**")
+                        .hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers("/api/users/teachers").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/users/**").authenticated() // self-view; ownership
+                                                                                          // enforced in service
+                        .requestMatchers(HttpMethod.PUT, "/api/users/**").authenticated() // self-update; ownership
+                                                                                          // enforced in service
+
+                        // --- Subjects ---
+                        .requestMatchers(HttpMethod.GET, "/api/subjects/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/subjects/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.PUT, "/api/subjects/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.DELETE, "/api/subjects/**").hasAnyRole("ADMIN", "HOD")
+
+                        // --- Attendance requests (order matters: specific before general) ---
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests/department/**")
+                        .hasAnyRole("HOD", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests/status/**")
+                        .hasAnyRole("HOD", "TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests").hasAnyRole("HOD", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests/**").authenticated() // ownership
+                                                                                                        // enforced in
+                                                                                                        // service
+                        .requestMatchers(HttpMethod.POST, "/api/attendance-requests").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/attendance-requests/*/status")
+                        .hasAnyRole("HOD", "TEACHER")
+                        .requestMatchers(HttpMethod.PUT, "/api/attendance-requests/**").hasRole("STUDENT") // ownership
+                                                                                                           // enforced
+                                                                                                           // in service
+                        .requestMatchers(HttpMethod.DELETE, "/api/attendance-requests/**")
+                        .hasAnyRole("STUDENT", "ADMIN") // ownership enforced in service
+
+                        // --- Notifications ---
+                        .requestMatchers("/api/notifications/teacher/**").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers("/api/notifications/student/**").authenticated()
+                        .requestMatchers("/api/notifications/**").hasAnyRole("ADMIN", "HOD")
+
+                        .anyRequest().authenticated());
 
         http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 

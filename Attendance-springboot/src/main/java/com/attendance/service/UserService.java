@@ -28,6 +28,9 @@ public class UserService {
     @Autowired
     private ModelMapper modelMapper;
 
+    @Autowired
+    private SecurityUtil securityUtil;
+
     public List<UserDTO> getAllUsers() {
         return userRepository.findAll()
                 .stream()
@@ -80,34 +83,47 @@ public class UserService {
     }
 
     public UserDTO createUser(UserCreateRequest request) {
-    if (userRepository.existsByEmail(request.getEmail())) {
-        throw new BadRequestException("Email already exists");
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new BadRequestException("Email already exists");
+        }
+
+        boolean hasSap = request.getSap() != null && !request.getSap().isBlank();
+
+        if (hasSap && userRepository.existsBySap(request.getSap())) {
+            throw new BadRequestException("SAP already exists");
+        }
+
+        User user = new User();
+        user.setSap(hasSap ? request.getSap() : null);
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setClassName(request.getClassName());
+        user.setRole(request.getRole());
+        user.setDepartment(request.getDepartment());
+        user.setIsFirstLogin(request.getIsFirstLogin() != null ? request.getIsFirstLogin() : true);
+        user.setCreatedAt(LocalDateTime.now());
+
+        User savedUser = userRepository.save(user);
+        return modelMapper.map(savedUser, UserDTO.class);
     }
-
-    boolean hasSap = request.getSap() != null && !request.getSap().isBlank();
-
-    if (hasSap && userRepository.existsBySap(request.getSap())) {
-        throw new BadRequestException("SAP already exists");
-    }
-
-    User user = new User();
-    user.setSap(hasSap ? request.getSap() : null);
-    user.setName(request.getName());
-    user.setEmail(request.getEmail());
-    user.setPassword(passwordEncoder.encode(request.getPassword()));
-    user.setClassName(request.getClassName());
-    user.setRole(request.getRole());
-    user.setDepartment(request.getDepartment());
-    user.setIsFirstLogin(request.getIsFirstLogin() != null ? request.getIsFirstLogin() : true);
-    user.setCreatedAt(LocalDateTime.now());
-
-    User savedUser = userRepository.save(user);
-    return modelMapper.map(savedUser, UserDTO.class);
-}
 
     public UserDTO updateUser(String id, UserUpdateRequest request) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+
+        // Ownership check: only the account owner or an admin can update
+        String currentUserId = securityUtil.getCurrentUserId();
+        boolean isOwner = id.equals(currentUserId);
+        boolean isAdmin = securityUtil.hasRole("admin");
+        if (!isOwner && !isAdmin) {
+            throw new BadRequestException("You do not have permission to update this user");
+        }
+
+        // Non-admins cannot change their own role (prevents privilege escalation)
+        if (!isAdmin && request.getRole() != null && !request.getRole().equalsIgnoreCase(user.getRole())) {
+            throw new BadRequestException("You do not have permission to change your role");
+        }
 
         if (request.getName() != null)
             user.setName(request.getName());
@@ -120,11 +136,11 @@ public class UserService {
         }
 
         if (request.getSap() != null && !request.getSap().isBlank() && !request.getSap().equals(user.getSap())) {
-    if (userRepository.existsBySap(request.getSap())) {
-        throw new BadRequestException("SAP already exists");
-    }
-    user.setSap(request.getSap());
-}
+            if (userRepository.existsBySap(request.getSap())) {
+                throw new BadRequestException("SAP already exists");
+            }
+            user.setSap(request.getSap());
+        }
 
         if (request.getClassName() != null)
             user.setClassName(request.getClassName());
@@ -143,6 +159,14 @@ public class UserService {
     public void deleteUser(String id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+
+        String currentUserId = securityUtil.getCurrentUserId();
+        boolean isOwner = id.equals(currentUserId);
+        boolean isAdmin = securityUtil.hasRole("admin");
+        if (!isOwner && !isAdmin) {
+            throw new BadRequestException("You do not have permission to delete this user");
+        }
+
         userRepository.delete(user);
     }
 
