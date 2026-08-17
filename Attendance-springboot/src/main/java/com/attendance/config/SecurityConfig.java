@@ -67,49 +67,49 @@ public class SecurityConfig {
                 .and()
                 .authorizeHttpRequests(authz -> authz
                         // --- Public ---
-                        .requestMatchers(HttpMethod.POST, "/users/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/users/login").permitAll()
 
                         // --- Users ---
-                        .requestMatchers(HttpMethod.POST, "/users").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/users/bulk/csv").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/users/bulk/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/users/**").hasRole("ADMIN")
-                        .requestMatchers("/users/search", "/users/role/**", "/api/users/class/**")
+                        .requestMatchers(HttpMethod.POST, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/users/bulk/csv").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/users/bulk/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/users/search", "/api/users/role/**", "/api/users/class/**")
                         .hasAnyRole("ADMIN", "HOD")
-                        .requestMatchers("/users/teachers").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/users/**").authenticated() // self-view; ownership
-                                                                                      // enforced in service
-                        .requestMatchers(HttpMethod.PUT, "/users/**").authenticated() // self-update; ownership
-                                                                                      // enforced in service
+                        .requestMatchers("/api/users/teachers").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/users/**").authenticated() // self-view; ownership
+                                                                                          // enforced in service
+                        .requestMatchers(HttpMethod.PUT, "/api/users/**").authenticated() // self-update; ownership
+                                                                                          // enforced in service
 
                         // --- Subjects ---
-                        .requestMatchers(HttpMethod.GET, "/subjects/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/subjects/**").hasAnyRole("ADMIN", "HOD")
-                        .requestMatchers(HttpMethod.PUT, "/subjects/**").hasAnyRole("ADMIN", "HOD")
-                        .requestMatchers(HttpMethod.DELETE, "/subjects/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.GET, "/api/subjects/**").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/subjects/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.PUT, "/api/subjects/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.DELETE, "/api/subjects/**").hasAnyRole("ADMIN", "HOD")
 
                         // --- Attendance requests (order matters: specific before general) ---
-                        .requestMatchers(HttpMethod.GET, "/attendance-requests/department/**")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests/department/**")
                         .hasAnyRole("HOD", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/attendance-requests/status/**")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests/status/**")
                         .hasAnyRole("HOD", "TEACHER", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/attendance-requests").hasAnyRole("HOD", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/attendance-requests/**").authenticated() // ownership
-                                                                                                    // enforced in
-                                                                                                    // service
-                        .requestMatchers(HttpMethod.POST, "/attendance-requests").hasRole("STUDENT")
-                        .requestMatchers(HttpMethod.PUT, "/attendance-requests/*/status")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests").hasAnyRole("HOD", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance-requests/**").authenticated() // ownership
+                                                                                                        // enforced in
+                                                                                                        // service
+                        .requestMatchers(HttpMethod.POST, "/api/attendance-requests").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/attendance-requests/*/status")
                         .hasAnyRole("HOD", "TEACHER")
-                        .requestMatchers(HttpMethod.PUT, "/attendance-requests/**").hasRole("STUDENT") // ownership
-                                                                                                       // enforced
-                                                                                                       // in service
-                        .requestMatchers(HttpMethod.DELETE, "/attendance-requests/**")
+                        .requestMatchers(HttpMethod.PUT, "/api/attendance-requests/**").hasRole("STUDENT") // ownership
+                                                                                                           // enforced
+                                                                                                           // in service
+                        .requestMatchers(HttpMethod.DELETE, "/api/attendance-requests/**")
                         .hasAnyRole("STUDENT", "ADMIN") // ownership enforced in service
 
                         // --- Notifications ---
-                        .requestMatchers("/notifications/teacher/**").hasAnyRole("TEACHER", "ADMIN")
-                        .requestMatchers("/notifications/student/**").authenticated()
-                        .requestMatchers("/notifications/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers("/api/notifications/teacher/**").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers("/api/notifications/student/**").authenticated()
+                        .requestMatchers("/api/notifications/**").hasAnyRole("ADMIN", "HOD")
 
                         .anyRequest().authenticated());
 
