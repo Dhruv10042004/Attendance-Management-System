@@ -68,7 +68,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         // --- Public ---
                         .requestMatchers(HttpMethod.POST, "/api/users/login").permitAll()
-
+                        .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         // --- Users ---
                         .requestMatchers(HttpMethod.POST, "/api/users").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/users/bulk/csv").hasRole("ADMIN")
