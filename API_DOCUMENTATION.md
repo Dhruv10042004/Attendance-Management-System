@@ -22,7 +22,16 @@ except `GlobalExceptionHandler`'s output for uncaught/`ResourceNotFoundException
 
 `POST /users/login` issues a JWT (24h expiry, HS512). Send it as `Authorization: Bearer <token>`.
 
-> **Current state:** `SecurityConfig` permits every request (`.anyRequest().permitAll()`). The JWT filter runs and populates `SecurityContextHolder`, but no endpoint currently rejects missing/invalid tokens or wrong roles. Treat role checks as UI-level only for now, not a server-side guarantee.
+**Current state:** `SecurityConfig.filterChain` maps every route to an explicit `hasRole(...)` / `hasAnyRole(...)` / `authenticated()` rule, and the JWT filter populates `SecurityContextHolder` before that check runs. A request with a missing, invalid, or under-privileged token is rejected with `401`/`403` before it reaches a controller — role checks are a real server-side guarantee, not just UI-level gating. The rule-of-thumb per resource:
+
+| Resource | Read | Write |
+|---|---|---|
+| Users | self / `ADMIN`+`HOD` for search & class lookups | create/bulk-delete/CSV-import: `ADMIN` only; update: any authenticated user (ownership enforced in `UserService`) |
+| Subjects | any authenticated user | `ADMIN` or `HOD` |
+| Attendance requests | any authenticated user for a single request; `ADMIN`/`HOD` for the full list or department view | create: `STUDENT`; edit/delete: `STUDENT` (ownership enforced in `AttendanceRequestService`) or `ADMIN`; approve/reject: `HOD`/`TEACHER` |
+| Notifications | teacher's own: `TEACHER`/`ADMIN`; student's own: any authenticated user; everything else: `ADMIN`/`HOD` |
+
+Fine-grained *ownership* checks (e.g. "only the student who filed this exact request, or an admin, may edit it") aren't expressible as a static URL pattern, so those still live in the service layer (`SecurityUtil.getCurrentUserId()` / `hasRole()`), same as before — the route rules above are the first gate, service-level checks are the second.
 
 ---
 
@@ -49,13 +58,16 @@ On failure returns `401` with `{ success: false, message: "Invalid email or pass
 ### 1.2 Get All Users — `GET /users`
 ### 1.3 Get User by ID — `GET /users/{id}`
 ### 1.4 Search Users — `GET /users/search?query=&role=`
-`role` defaults to `"all"`; matches name, email, or SAP (case-insensitive contains). Passing a specific role narrows the search to that role only.
+`role` defaults to `"all"`; matches name, email, or SAP (case-insensitive contains). Passing a specific role narrows the search to that role only. Requires `ADMIN` or `HOD`.
 
 ### 1.5 Get All Teachers — `GET /users/teachers`
 ### 1.6 Get Users by Role — `GET /users/role/{role}`
+Requires `ADMIN` or `HOD`.
 ### 1.7 Get Users by Class — `GET /users/class/{className}`
+Requires `ADMIN` or `HOD`.
 
 ### 1.8 Create User — `POST /users`
+Requires `ADMIN`.
 ```json
 {
   "sap": "SAP001", "name": "Jane Smith", "email": "jane@example.com",
@@ -69,14 +81,15 @@ On failure returns `401` with `{ success: false, message: "Invalid email or pass
 - `201 Created`.
 
 ### 1.9 Update User — `PUT /users/{id}`
-Partial update — only non-null fields in `UserUpdateRequest` are applied: `sap, name, email, className, role, isFirstLogin, department`. Changing `email` or `sap` re-validates uniqueness against other users.
+Partial update — only non-null fields in `UserUpdateRequest` are applied: `sap, name, email, className, role, isFirstLogin, department`. Changing `email` or `sap` re-validates uniqueness against other users. Requires authentication; the service layer enforces that only the account owner or an admin can actually apply the change, and only an admin can change `role`.
 
 ### 1.10 Delete User — `DELETE /users/{id}`
+Requires `ADMIN`.
 ### 1.11 Delete Users by Role — `DELETE /users/bulk/{role}`
-Throws `404` if no users have that role.
+Requires `ADMIN`. Throws `404` if no users have that role.
 
 ### 1.12 Bulk CSV Import — `POST /users/bulk/csv`
-Multipart form field `file`. Required CSV columns: `sap, name, email, password, role`. Optional: `className, department`. `isFirstLogin` is **always set to `true`** by the importer regardless of any CSV column of that name. Rows whose email (or non-blank sap) already exists are skipped, not overwritten.
+Requires `ADMIN`. Multipart form field `file`. Required CSV columns: `sap, name, email, password, role`. Optional: `className, department`. `isFirstLogin` is **always set to `true`** by the importer regardless of any CSV column of that name. Rows whose email (or non-blank sap) already exists are skipped, not overwritten.
 ```json
 // response.data
 { "created": ["a@x.com", "b@x.com"], "skipped": ["c@x.com (already exists)"] }
@@ -86,7 +99,7 @@ Multipart form field `file`. Required CSV columns: `sap, name, email, password, 
 
 ## 2. Subject Endpoints (`/subjects`)
 
-Unchanged in shape from the original migration, with one addition: `SubjectDTO` now includes a resolved `teacherName` (looked up server-side; `null` if the teacher record was deleted). `getSubjectById` is cached (`@Cacheable("subjects")`); `updateSubject`/`deleteSubject` evict that cache entry.
+Unchanged in shape from the original migration, with one addition: `SubjectDTO` now includes a resolved `teacherName` (looked up server-side; `null` if the teacher record was deleted). `getSubjectById` is cached (`@Cacheable("subjects")`); `updateSubject`/`deleteSubject` evict that cache entry. Reads require authentication; creates/updates/deletes require `ADMIN` or `HOD`.
 
 ```
 GET    /subjects
@@ -113,11 +126,14 @@ DELETE /subjects/{id}
 **These changed the most.** Create/update are now `multipart/form-data`, not JSON, because a proof file can be attached in the same call.
 
 ### 3.1 Get All — `GET /attendance-requests`
+Requires `ADMIN` or `HOD`.
 ### 3.2 Get by ID — `GET /attendance-requests/{id}`
+Requires authentication.
 ### 3.3 Get Student's Requests — `GET /attendance-requests/student/{studentId}`
 Returns the union of requests the student **owns** (`studentId`) and requests they were **added to** by someone else (`studentIds` contains them), de-duplicated, owned-first.
 
 ### 3.4 Get by Status — `GET /attendance-requests/status/{status}`
+Requires `HOD`, `TEACHER`, or `ADMIN`.
 ### 3.5 Get Student Stats — `GET /attendance-requests/stats/{studentId}`
 ```json
 // response.data — note real field names, NOT "totalRequests"/"approvedRequests" as the old doc showed
@@ -125,10 +141,10 @@ Returns the union of requests the student **owns** (`studentId`) and requests th
 ```
 
 ### 3.6 Get by Department — `GET /attendance-requests/department/{department}` — **new**
-Used by the HOD dashboard to scope visibility to their own department.
+Used by the HOD dashboard to scope visibility to their own department. Requires `HOD` or `ADMIN`.
 
 ### 3.7 Create Request — `POST /attendance-requests`
-**Content-Type: `multipart/form-data`.** Form fields:
+Requires `STUDENT`. **Content-Type: `multipart/form-data`.** Form fields:
 
 | Field | Required | Notes |
 |---|---|---|
@@ -149,18 +165,21 @@ Server behavior:
 - `201 Created`.
 
 ### 3.8 Update Request — `PUT /attendance-requests/{id}`
-Same multipart shape as create, but **every field is optional** (`name, reason, date, student_ids, subjectDatesJson, proof`) — only supplied fields are changed. A new `proof` file replaces the old URL.
+Requires `STUDENT` at the route level; the service then confirms the caller is the request's owner (or an admin) and that the request is still `pending` before applying changes. Same multipart shape as create, but **every field is optional** (`name, reason, date, student_ids, subjectDatesJson, proof`) — only supplied fields are changed. A new `proof` file replaces the old URL.
 
 ### 3.9 Update Status — `PUT /attendance-requests/{id}/status`
+Requires `HOD` or `TEACHER`.
 ```json
 { "status": "approved" }   // or "rejected"
 ```
+- **Department-scoped**: a non-admin reviewer must belong to the same department the request was stamped with, or this returns `400 You do not have permission to review requests outside your department`.
 - **Atomic**: uses `findAndModify` to flip status only if the request is currently `pending`. If it isn't (already decided), returns `400 Request is no longer pending (current status: approved)`.
 - Invalid status strings (anything other than `approved`/`rejected`) → `400 Invalid status. Must be 'approved' or 'rejected'`.
 - **On approval only**: creates one `Notification` per entry in `subjectDates`, addressed to that subject's `teacherId`, listing every student on the request (owner + `studentIds`). Rejections create no notifications.
 - There is **no** `feedbackNote` field persisted anywhere in this flow, despite the frontend collecting one.
 
 ### 3.10 Delete Request — `DELETE /attendance-requests/{id}`
+Requires `STUDENT` (ownership enforced in service) or `ADMIN`.
 
 ### 3.11 Get Proof File (legacy) — `GET /attendance-requests/proof/{filename}`
 Serves a file from the local `UPLOAD_DIR` path. In current practice proof files live on Cloudinary and `proof` on the DTO is already a full `https://res.cloudinary.com/...` URL, so this endpoint is effectively dead code unless something was uploaded before the Cloudinary migration.
@@ -193,21 +212,29 @@ Note: `subjectDates[].subjectId` is a full `SubjectDTO` object, not a string id,
 ## 4. Notification Endpoints (`/notifications`)
 
 ### 4.1 Get All — `GET /notifications`
+Requires `ADMIN` or `HOD`.
 ### 4.2 Get by ID — `GET /notifications/{id}`
+Requires `ADMIN` or `HOD`.
 ### 4.3 Get Teacher's Notifications — `GET /notifications/teacher/{teacherId}?startDate=&endDate=`
-Both query params optional, format `yyyy-MM-dd`, inclusive on both ends. Filters `Notification.date`'s local date against the range.
+Requires `TEACHER` or `ADMIN`. Both query params optional, format `yyyy-MM-dd`, inclusive on both ends. Filters `Notification.date`'s local date against the range.
 
 ### 4.4 Get Student's Notifications — `GET /notifications/student/{studentId}`
+Requires authentication.
 ### 4.5 Get Unread — `GET /notifications/unread`
+Requires `ADMIN` or `HOD`.
 ### 4.6 Get for a Request — `GET /notifications/attendance-request/{attendanceRequestId}`
+Requires `ADMIN` or `HOD`.
 ### 4.7 Create — `POST /notifications`
+Requires `ADMIN` or `HOD`.
 ```json
 { "teacherId": "...", "studentIds": ["..."], "subjectId": "...", "date": "2026-07-23T09:00:00", "attendanceRequestId": "..." }
 ```
 `teacherId` must resolve to an existing user or this `404`s.
 
 ### 4.8 Mark as Read — `PUT /notifications/{id}/read`
+Requires `ADMIN` or `HOD`.
 ### 4.9 Delete — `DELETE /notifications/{id}`
+Requires `ADMIN` or `HOD`.
 
 ### Response Shape — `NotificationDTO`
 ```json
@@ -225,7 +252,8 @@ Both query params optional, format `yyyy-MM-dd`, inclusive on both ends. Filters
 ## Error Responses
 
 **400** (business rule) — `{ "success": false, "message": "..." }`
-**401** (login only) — `{ "success": false, "message": "Invalid email or password" }`
+**401** (login failure, or missing/invalid token) — `{ "success": false, "message": "..." }`
+**403** (valid token, wrong role or wrong owner) — Spring Security's default access-denied response, or a `BadRequestException`-shaped `403` from a service-level ownership check
 **404 / 500** (uncaught / not-found) — `ErrorResponse` shape:
 ```json
 { "timestamp": "2026-07-23T10:00:00", "message": "...", "error": "Resource Not Found", "status": 404 }
@@ -241,7 +269,7 @@ Both query params optional, format `yyyy-MM-dd`, inclusive on both ends. Filters
 
 ## CORS
 
-Active config is `SecurityConfig.corsConfigurationSource` (not the older `CorsConfig`): allows origin patterns `http://localhost:*`, `http://192.168.*.*:*`, `https://*.vercel.app`, methods `GET,POST,PUT,DELETE,PATCH,OPTIONS`, all headers, credentials enabled.
+`SecurityConfig.corsConfigurationSource()` is the **only** CORS configuration in the project (the earlier `WebMvcConfigurer`-based `CorsConfig` has been removed as redundant): allows origin patterns `http://localhost:*`, `http://192.168.*.*:*`, `https://*.vercel.app`, methods `GET,POST,PUT,DELETE,PATCH,OPTIONS`, all headers, credentials enabled.
 
 ---
 **API Documentation — reflects current implementation as of this writing**

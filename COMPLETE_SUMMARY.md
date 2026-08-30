@@ -2,7 +2,7 @@
 
 ## Overview
 
-The system has moved well past the original Node.js→Spring Boot migration. It's now a full department-aware attendance workflow with group requests, Cloudinary-backed file storage, CSV bulk onboarding, and a complete React frontend with four role-specific dashboards. This document replaces the original migration summary.
+The system has moved well past the original Node.js→Spring Boot migration. It's now a full department-aware attendance workflow with group requests, Cloudinary-backed file storage, CSV bulk onboarding, server-side role enforcement, and a complete React frontend with four role-specific dashboards. This document replaces the original migration summary.
 
 ---
 
@@ -16,8 +16,7 @@ Attendance-springboot/
 ├── src/main/java/com/attendance/
 │   ├── AttendanceApplication.java          ✅ @EnableCaching, ModelMapper bean
 │   ├── config/
-│   │   ├── CorsConfig.java                 (legacy — superseded by SecurityConfig's CORS)
-│   │   ├── SecurityConfig.java             ✅ active CORS + JWT filter chain (currently permitAll)
+│   │   ├── SecurityConfig.java             ✅ single active CORS source + role-based JWT filter chain
 │   │   ├── CloudinaryConfig.java           ✅ NEW — Cloudinary client bean
 │   │   ├── MongoIndexConfig.java           ✅ NEW — partial unique index on `sap`
 │   │   └── DemoDataInitializer.java        ✅ NEW — seeds 4 demo accounts, flag-gated
@@ -35,7 +34,7 @@ Attendance-springboot/
 │   │   ├── NotificationService.java        ✅ date-range filtering, enrichment
 │   │   ├── CsvImportService.java           ✅ NEW — bulk user import
 │   │   ├── CustomUserDetailsService.java
-│   │   └── SecurityUtil.java
+│   │   └── SecurityUtil.java               ✅ ownership + role helpers used by the second (service-level) authz gate
 │   │
 │   ├── entity/ (4 entities)
 │   │   ├── User.java                       ✅ + `department` field
@@ -72,9 +71,10 @@ Attendance-js-frontend/                       ✅ NEW since migration — full R
 - Bulk delete by role
 - **CSV bulk import** (Apache Commons CSV) — creates users, skips existing, reports both lists
 
-### ✅ Authentication
+### ✅ Authentication & Authorization
 - JWT (HS512, 24h expiry), BCrypt password hashing
-- **⚠️ Authorization is not currently enforced at the endpoint level** — `SecurityConfig` permits all requests; the JWT filter populates the security context but nothing checks it yet. Role gating today lives entirely in the React frontend (`ProtectedRoute`), which is not a security boundary.
+- **Enforced at the endpoint level**: `SecurityConfig.filterChain` maps every route to an explicit `hasRole(...)` / `hasAnyRole(...)` / `authenticated()` rule. A request with a missing, invalid, or under-privileged token is rejected with `401`/`403` before it reaches a controller.
+- **Ownership** (e.g. "only the requesting student or an admin can edit *this* request") is a second, finer-grained gate that lives in the service layer (`SecurityUtil`), since it can't be expressed as a static URL pattern. `ProtectedRoute` on the frontend is a UX convenience on top of both, not the security boundary by itself anymore.
 
 ### ✅ Subject / Timetable Management
 - Full CRUD, per-teacher/class/day views, schedule generator
@@ -87,7 +87,7 @@ Attendance-js-frontend/                       ✅ NEW since migration — full R
 - Proof files upload to **Cloudinary**, not local disk (the old `UPLOAD_DIR` config and the `/proof/{filename}` controller endpoint are legacy holdovers)
 - **Duplicate-submission guard**: identical pending request (same student + reason) within 30 seconds is rejected
 - **Atomic approve/reject** via `MongoTemplate.findAndModify` — only a `pending` request can transition; re-deciding an already-decided request `400`s
-- **Department** is stamped on each request from the owning student, enabling department-scoped HOD review (`GET /attendance-requests/department/{department}`)
+- **Department** is stamped on each request from the owning student, enabling department-scoped HOD review (`GET /attendance-requests/department/{department}`), and non-admin reviewers are rejected with `400` if their department doesn't match
 - Every read enriches `student`/`students`/`subjectDates[].subjectId` into full objects rather than bare ids; missing referenced records degrade to `null` instead of failing the whole response
 
 ### ✅ Notifications
@@ -102,11 +102,14 @@ Attendance-js-frontend/                       ✅ NEW since migration — full R
 - shadcn/ui components (button, dialog, dropdown-menu, select, tabs, table, card, avatar, badge, input, textarea) on Radix primitives, styled with Tailwind v4
 
 ### ⚠️ Known Gaps / Inconsistencies
-- No server-side role/permission enforcement (see above)
 - Frontend HOD/Student UIs read/write a `feedbackNote` on approve/reject that the backend **does not persist or return**
-- Two CORS configurations exist (`CorsConfig` and `SecurityConfig`); only the Security one is actually wired into the active filter chain
 - `/attendance-requests/proof/{filename}` (local-disk serving) is effectively dead code post-Cloudinary
 - CSV bulk import exists for users but not for subjects, despite a frontend `importSubjectsCsv`-style call path referenced in `TimetableManagement.jsx`
+
+### ✅ Resolved since the last version of this summary
+- ~~No server-side role/permission enforcement~~ — every route now has an explicit rule in `SecurityConfig`; see Authentication & Authorization above
+- ~~Two CORS configurations~~ — the redundant `CorsConfig` (`WebMvcConfigurer`) has been deleted; `SecurityConfig.corsConfigurationSource()` is the single source, wired directly into the filter chain
+- ~~Dead route pattern~~ — `SecurityConfig` had a request matcher (`/api/users/class/**`) that could never match anything because Spring evaluates matchers against the servlet path with the `/api` context-path already stripped; class-scoped user lookups were silently falling through to a looser rule. Fixed to `/users/class/**`.
 
 ---
 
@@ -170,6 +173,8 @@ PUT    /notifications/{id}/read
 DELETE /notifications/{id}
 ```
 
+See `API_DOCUMENTATION.md` for the required role per endpoint.
+
 ---
 
 ## 🚀 Quick Start
@@ -210,18 +215,18 @@ Required backend env vars: `MONGODB_URI`, `JWT_SECRET`, `CLOUDINARY_CLOUD_NAME`,
 - [ ] Notification created only on approval, one per subject/date, correct teacher
 - [ ] CSV import skips existing emails/SAPs and reports both lists
 - [ ] Frontend token refresh/expiry handling (currently: no refresh, just re-login on 401)
+- [ ] A student's Postman call to an admin-only route (e.g. `DELETE /users/bulk/{role}`) returns `403`
+- [ ] `/users/class/{className}` is reachable only by `ADMIN`/`HOD` (regression test for the fixed dead-pattern bug)
 - [ ] Confirm whether feedbackNote support should be added server-side or removed client-side
 
 ---
 
 ## 🎯 Suggested Next Steps
 
-1. **Close the security gap** — enforce role-based authorization server-side (`SecurityConfig` currently permits everything).
-2. **Resolve the `feedbackNote` mismatch** — either persist it on `AttendanceRequest`/expose it in the DTO, or remove the UI fields.
-3. Consolidate the two CORS configs into one.
-4. Decide the fate of the local-disk proof endpoint (`/attendance-requests/proof/{filename}`) now that Cloudinary is the actual storage backend.
-5. Add subject CSV import to match the user import, or remove the frontend affordance that implies it exists.
-6. Add tests around the atomic status-transition and duplicate-guard logic — both are easy to silently regress.
+1. **Resolve the `feedbackNote` mismatch** — either persist it on `AttendanceRequest`/expose it in the DTO, or remove the UI fields.
+2. Decide the fate of the local-disk proof endpoint (`/attendance-requests/proof/{filename}`) now that Cloudinary is the actual storage backend.
+3. Add subject CSV import to match the user import, or remove the frontend affordance that implies it exists.
+4. Add tests around the atomic status-transition, duplicate-guard, and role-based route-authorization logic — all three are easy to silently regress.
 
 ---
 

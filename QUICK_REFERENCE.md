@@ -9,7 +9,7 @@
 | **Build Tool** | Maven |
 | **Database** | MongoDB |
 | **File Storage** | Cloudinary (not local disk) |
-| **Authentication** | JWT (24h) — issued but **not enforced** server-side yet |
+| **Authentication** | JWT (24h) — issued **and enforced** server-side via role-based route rules in `SecurityConfig` |
 | **Port** | 8080 (`context-path: /api`) |
 | **Base URL** | `http://localhost:8080/api` |
 | **Frontend** | React 18 + Vite + Tailwind v4 + shadcn/ui |
@@ -51,13 +51,13 @@ cd Attendance-js-frontend && npm install && npm run dev
 
 | Service | Purpose | Notable Behavior |
 |---------|---------|-----------|
-| **UserService** | User CRUD | uniqueness checks on email + sap |
+| **UserService** | User CRUD | uniqueness checks on email + sap; ownership/role checks for update & delete |
 | **SubjectService** | Subject CRUD | `getSubjectById` **cached** (`@Cacheable`), writes evict |
-| **AttendanceRequestService** | Request handling | multipart parsing, Cloudinary upload, 30s dedupe guard, atomic `findAndModify` status transition, notification fan-out on approval |
+| **AttendanceRequestService** | Request handling | multipart parsing, Cloudinary upload, 30s dedupe guard, atomic `findAndModify` status transition, department-match check on review, notification fan-out on approval |
 | **NotificationService** | Notifications | date-range filter, enriches subject/students/reason |
 | **CsvImportService** | Bulk user import | required cols: sap,name,email,password,role; optional: className,department; isFirstLogin always `true` |
 | **CustomUserDetailsService** | Spring Security | loads by email |
-| **SecurityUtil** | Auth helpers | current-user email/role checks |
+| **SecurityUtil** | Auth helpers | current-user id/email/department + role checks — the second, ownership-level authorization gate behind `SecurityConfig`'s route rules |
 
 ---
 
@@ -82,7 +82,7 @@ Exception: uncaught / `ResourceNotFoundException` / `BadRequestException` return
 
 ---
 
-## Authentication Flow
+## Authentication & Authorization Flow
 
 ```
 1. POST /users/login → { token, user }
@@ -90,8 +90,12 @@ Exception: uncaught / `ResourceNotFoundException` / `BadRequestException` return
 3. axios interceptor (lib/api.js) attaches Authorization: Bearer <token>
    AND unwraps ApiResponse.data automatically — components see raw payloads
 4. JwtAuthenticationFilter validates token, sets SecurityContext
-5. ⚠️ No endpoint currently checks the SecurityContext for authorization —
-   SecurityConfig permits all requests regardless of auth state
+5. SecurityConfig.filterChain checks the SecurityContext against an explicit
+   per-route rule (hasRole / hasAnyRole / authenticated) before the request
+   reaches a controller — unauthenticated or under-privileged calls get 401/403
+6. Inside the controller, service-level ownership checks (SecurityUtil) enforce
+   the finer-grained "only the owner or an admin" rules that a URL pattern
+   alone can't express
 ```
 
 ---
@@ -120,8 +124,9 @@ Exception: uncaught / `ResourceNotFoundException` / `BadRequestException` return
 |------|---------|
 | 200 | OK |
 | 201 | Created |
-| 400 | Bad Request (business rule, e.g. dup email, invalid status, duplicate request) |
-| 401 | Login failure only |
+| 400 | Bad Request (business rule, e.g. dup email, invalid status, duplicate request, wrong-department review) |
+| 401 | Unauthenticated — login failure, or missing/invalid token on a protected route |
+| 403 | Authenticated but the wrong role or wrong owner for this action |
 | 404 | Not Found |
 | 500 | Server Error |
 
@@ -162,7 +167,7 @@ APP_BASE_URL=https://your-domain.com
 | Teacher | `/teacher` | `/notifications/teacher/{id}?startDate=&endDate=` |
 | Student | `/student` | `/attendance-requests/student/{id}`, `/attendance-requests/stats/{id}` |
 
-All gated by `ProtectedRoute` (client-side only — see Security note).
+`ProtectedRoute` gates these client-side for UX (instant redirect on the wrong role); the real boundary is now `SecurityConfig` on the backend, so a stale or forged client can't bypass it just by skipping `ProtectedRoute`.
 
 ---
 
@@ -170,11 +175,11 @@ All gated by `ProtectedRoute` (client-side only — see Security note).
 
 | Gap | Where |
 |---|---|
-| No server-side authorization | `SecurityConfig.filterChain` |
 | `feedbackNote` collected in UI but not persisted | Hod/StudentDashboard vs `AttendanceRequestDTO` |
-| Two CORS configs, only one active | `CorsConfig` vs `SecurityConfig` |
 | Local proof-file endpoint effectively dead | `AttendanceRequestController.getProofFile` |
 | No subject CSV import despite frontend hook | `TimetableManagement.jsx` calls `/subjects/import/csv` — no such controller endpoint exists |
+
+**Resolved:** server-side authorization is now enforced per-route in `SecurityConfig` (previously a gap); the duplicate `CorsConfig` has been deleted, leaving `SecurityConfig.corsConfigurationSource()` as the single CORS source; a dead request-matcher pattern (`/api/users/class/**`, which could never match since the context-path is stripped before matching) was found and fixed to `/users/class/**`.
 
 ---
 
@@ -187,8 +192,10 @@ All gated by `ProtectedRoute` (client-side only — see Security note).
 | Proof upload fails | Check all 3 `CLOUDINARY_*` vars |
 | JWT invalid | Check `JWT_SECRET`, token not expired |
 | CORS error | Check origin against `SecurityConfig.corsConfigurationSource` patterns |
+| `403 Forbidden` on an endpoint | Expected if the logged-in role doesn't match the route's required role — check the table in `API_DOCUMENTATION.md` |
 | Duplicate request rejected unexpectedly | By design — same student+reason within 30s is blocked |
 | Status update returns 400 "no longer pending" | Request was already approved/rejected — transitions are one-way |
+| Status update returns 400 "outside your department" | Non-admin reviewer's department doesn't match the request's — expected |
 
 ---
 

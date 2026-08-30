@@ -1,6 +1,6 @@
 # Deployment & Production Guide (Current)
 
-The biggest change from the original guide: **file storage is Cloudinary, not local disk**, so `UPLOAD_DIR` and any volume-mounting strategy for proof files is no longer load-bearing. A real `Dockerfile` now exists in the repo (multi-stage), replacing the illustrative one from the original guide.
+The biggest change from the original guide: **file storage is Cloudinary, not local disk**, so `UPLOAD_DIR` and any volume-mounting strategy for proof files is no longer load-bearing. A real `Dockerfile` now exists in the repo (multi-stage), replacing the illustrative one from the original guide. Endpoint-level authorization is also now enforced server-side (see the Security section below), rather than being a pre-launch TODO.
 
 ## Pre-Deployment Checklist
 
@@ -11,7 +11,7 @@ The biggest change from the original guide: **file storage is Cloudinary, not lo
 - [ ] **Cloudinary credentials set** (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) — proof uploads fail hard without these
 - [ ] `DEMO_DATA_ENABLED` set to `false` (or unset) in production — otherwise 4 demo accounts with a published password (`Demo@123`) get seeded
 - [ ] CORS origin patterns in `SecurityConfig.corsConfigurationSource` updated for your real frontend domain(s)
-- [ ] **Authorization enforcement added** — as shipped, `SecurityConfig` permits all requests; do not deploy this publicly without addressing that (see Security section below)
+- [x] **Authorization enforcement is in place** — `SecurityConfig.filterChain` maps every route to an explicit role rule (see Security section below). Before going live, double-check that the role list still matches your actual deployment (e.g. add any new roles/endpoints you've introduced since this was written)
 - [ ] Frontend `VITE_API_BASE_URL` points at the deployed backend
 
 ---
@@ -129,11 +129,15 @@ Other platforms (AWS Elastic Beanstalk / EC2, Heroku, GCP App Engine) work the s
 
 ## Security Before Going Public
 
-The single most important pre-launch item that wasn't relevant in the original guide: **`SecurityConfig.filterChain` currently permits every request** (`.anyRequest().permitAll()`). The JWT filter still runs and authenticates valid tokens into the `SecurityContext`, but nothing currently blocks:
-- Unauthenticated access to any endpoint
-- A student calling admin/HOD-only endpoints (bulk delete, CSV import, status approval, etc.)
+`SecurityConfig.filterChain` maps every route to an explicit `hasRole(...)` / `hasAnyRole(...)` / `authenticated()` rule, and the JWT filter authenticates valid tokens into the `SecurityContext` before that check runs. In practice this means, out of the box:
+- Requests without a valid `Authorization: Bearer <token>` are rejected (`401`) on anything other than `POST /users/login` and `GET /health`.
+- A student calling admin/HOD-only endpoints (bulk delete, CSV import, status approval, department view, etc.) is rejected (`403`).
+- `@EnableMethodSecurity(prePostEnabled = true)` is turned on in `SecurityConfig` if you want to add `@PreAuthorize` on top of specific service methods later — it isn't required today since the route-level rules already cover every controller.
 
-Before any public deployment, add method- or endpoint-level authorization (e.g. `.requestMatchers("/users/bulk/**").hasRole("ADMIN")`, `@PreAuthorize` on service methods — `@EnableGlobalMethodSecurity(prePostEnabled = true)` is already turned on in `SecurityConfig`, it's just unused).
+There's a second, separate layer worth knowing about: **ownership** checks (e.g. "only the student who created this exact request, or an admin, may edit it") aren't expressible as a static URL rule, so those live in the service layer (`SecurityUtil`, `UserService`, `AttendanceRequestService`). Before going public:
+- [ ] Re-read the role table in `API_DOCUMENTATION.md` and confirm it still matches your actual role/endpoint needs — route rules are a checklist item you own, not something that stays correct automatically as you add endpoints.
+- [ ] Add a test (or at least a manual Postman pass) that a non-admin token gets `403` on every admin-only route before each release.
+- [ ] If you introduce a new controller or route, remember to add a matching `requestMatchers(...)` rule in `SecurityConfig` — a route with no explicit rule falls through to the final `.anyRequest().authenticated()`, which is safe by default (nobody unauthenticated gets in) but probably not the *role* restriction you actually want.
 
 ---
 
@@ -154,4 +158,4 @@ Unchanged from before — standard `mongodump`/`mongorestore` or MongoDB Atlas's
 
 ---
 
-**Deploy checklist, condensed:** Mongo ✅ · JWT secret ✅ · Cloudinary creds ✅ · demo data off ✅ · CORS origins correct ✅ · authorization actually enforced ⚠️ (do this before going live)
+**Deploy checklist, condensed:** Mongo ✅ · JWT secret ✅ · Cloudinary creds ✅ · demo data off ✅ · CORS origins correct ✅ · authorization enforced ✅ (just re-verify the role list matches your current routes before each release)
