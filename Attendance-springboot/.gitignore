@@ -1,74 +1,25 @@
-# .gitignore for Spring Boot Application
+# maven build output
+target/
+
+# compiled classes
+*.class
 
 # IDE
 .idea/
+*.iml
 .vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+.classpath
+.project
+.settings/
 
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-.mvn/timing.properties
-.mvn/wrapper/maven-wrapper.jar
-target/
-*.class
+# env / secrets — you already do the right thing with application.yml.example
 .env
-# Spring Boot
-.springBeans
-*.log
-application-dev.yml
-application-prod.yml
-# Gradle (if used)
-.gradle
-build/
-gradle/
 
-# Compiled classes
-*.class
-*.classpath
-
-# Java
-*.jar
-*.exe
-*.war
-*.nar
-
-# Local environment variables
-.env
-.env.local
-.properties
+# uploaded files (if stored locally rather than only Cloudinary)
+uploads/
 
 # OS
 .DS_Store
-Thumbs.db
 
-# Build output
-/build
-/dist
-
-# Temporary files
-*.tmp
-*.bak
-*.swp
-
-# Node modules (if frontend in same repo)
-/frontend/node_modules
-/frontend/dist
-/frontend/.env
-
-# Database
-*.sqlite
-*.db
-
-# Logs
-logs/
+# logs
 *.log
