@@ -10,4 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping backend health endpoint
-        run: curl -sf https://attendance-management-system-1-txzw.onrender.com/api/health || echo "Ping failed (backend may still be waking up)"
+        run: |
+          echo "Pinging backend..."
+          curl -sf https://attendance-management-system-1-txzw.onrender.com/api/health
+          echo "Backend is alive!"
