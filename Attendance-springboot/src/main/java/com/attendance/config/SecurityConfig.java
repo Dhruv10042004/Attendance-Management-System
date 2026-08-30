@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -22,7 +22,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true)
+@EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
     @Bean
@@ -60,21 +60,19 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf().disable()
-                .exceptionHandling()
-                .and()
-                .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                .and()
+                .csrf(csrf -> csrf.disable()) // stateless JWT API — no session/CSRF token in play
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authz -> authz
                         // --- Public ---
                         .requestMatchers(HttpMethod.POST, "/users/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/health").permitAll()
+
                         // --- Users ---
                         .requestMatchers(HttpMethod.POST, "/users").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/users/bulk/csv").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/users/bulk/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/users/**").hasRole("ADMIN")
-                        .requestMatchers("/users/search", "/users/role/**", "/api/users/class/**")
+                        .requestMatchers("/users/search", "/users/role/**", "/users/class/**")
                         .hasAnyRole("ADMIN", "HOD")
                         .requestMatchers("/users/teachers").authenticated()
                         .requestMatchers(HttpMethod.GET, "/users/**").authenticated() // self-view; ownership
@@ -95,14 +93,14 @@ public class SecurityConfig {
                         .hasAnyRole("HOD", "TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance-requests").hasAnyRole("HOD", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance-requests/**").authenticated() // ownership
-                                                                                                    // enforced in
-                                                                                                    // service
+                                                                                                     // enforced in
+                                                                                                     // service
                         .requestMatchers(HttpMethod.POST, "/attendance-requests").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.PUT, "/attendance-requests/*/status")
                         .hasAnyRole("HOD", "TEACHER")
                         .requestMatchers(HttpMethod.PUT, "/attendance-requests/**").hasRole("STUDENT") // ownership
-                                                                                                       // enforced
-                                                                                                       // in service
+                                                                                                        // enforced
+                                                                                                        // in service
                         .requestMatchers(HttpMethod.DELETE, "/attendance-requests/**")
                         .hasAnyRole("STUDENT", "ADMIN") // ownership enforced in service
 

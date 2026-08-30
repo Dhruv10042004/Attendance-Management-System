@@ -11,8 +11,7 @@ Attendance-springboot/
 │   ├── java/com/attendance/
 │   │   ├── AttendanceApplication.java           # @EnableCaching + ModelMapper bean
 │   │   ├── config/
-│   │   │   ├── CorsConfig.java                  # WebMvcConfigurer CORS (legacy, superseded below)
-│   │   │   ├── SecurityConfig.java              # JWT filter chain + active CORS source
+│   │   │   ├── SecurityConfig.java              # JWT filter chain, role-based authz + CORS source (single source of truth)
 │   │   │   ├── CloudinaryConfig.java             # Cloudinary client bean
 │   │   │   ├── MongoIndexConfig.java             # Partial unique index on `sap`
 │   │   │   └── DemoDataInitializer.java          # Seeds demo accounts (feature-flagged)
@@ -43,6 +42,82 @@ Attendance-springboot/
 ├── pom.xml
 └── Attendance-js-frontend/                       # React 18 + Vite frontend
 ```
+
+## System Architecture
+
+```mermaid
+graph TB
+    subgraph Client["Client"]
+        Browser["Browser"]
+    end
+
+    subgraph Frontend["Attendance-js-frontend — React 18 + Vite"]
+        Pages["Role Dashboards<br/>Admin · HOD · Teacher · Student"]
+        AuthCtx["AuthContext<br/>JWT + user cached in localStorage"]
+        ApiClient["lib/api.js<br/>Axios instance — attaches Bearer token,<br/>unwraps ApiResponse.data"]
+    end
+
+    subgraph Backend["Attendance-springboot — Spring Boot 3.2 / Java 17"]
+        Security["JwtAuthenticationFilter +<br/>SecurityConfig (CORS, route rules)"]
+        Controllers["Controllers<br/>User · Subject · AttendanceRequest · Notification"]
+        Services["Services<br/>ownership checks, duplicate guard,<br/>atomic status transition, notification fan-out"]
+        Repos["Spring Data MongoDB Repositories"]
+    end
+
+    subgraph External["External Services"]
+        Mongo[("MongoDB<br/>users · subjects ·<br/>attendance_requests · notifications")]
+        Cloudinary[("Cloudinary<br/>proof file storage")]
+    end
+
+    Browser --> Pages
+    Pages --> AuthCtx
+    Pages --> ApiClient
+    ApiClient -- "HTTPS REST /api/*<br/>Authorization: Bearer <JWT>" --> Security
+    Security --> Controllers
+    Controllers --> Services
+    Services --> Repos
+    Repos --> Mongo
+    Services -- "upload proof (multipart)" --> Cloudinary
+```
+
+**Layers at a glance**
+
+| Layer | Responsibility |
+|---|---|
+| **React SPA** | 4 role dashboards, dark/light theme, form validation, calls the API through a single Axios client |
+| **Spring Security + JWT filter** | Authenticates the bearer token and populates the security context; route-level rules live in `SecurityConfig` |
+| **Controllers → Services** | Controllers are thin; services own business rules (ownership checks, the 30s duplicate-submission guard, the atomic pending→approved/rejected transition, notification creation) |
+| **MongoDB** | Document store for all four collections, with `@Indexed` fields plus a partial unique index on `sap` |
+| **Cloudinary** | Receives proof-of-absence file uploads directly from `AttendanceRequestService`; no files touch local disk |
+
+## Workflow: Attendance Request Lifecycle
+
+This is the end-to-end path a single attendance request takes, from a student filling out the form to a teacher seeing the resulting absence.
+
+```mermaid
+flowchart TD
+    Start(["Student opens<br/>Create Request form"]) --> Fill["Fill name, reason, date(s),<br/>select subjects, add buddies,<br/>attach proof (optional)"]
+    Fill --> Post["POST /attendance-requests<br/>(multipart/form-data)"]
+    Post --> Dup{"Duplicate pending request<br/>in last 30s?"}
+    Dup -- Yes --> Bad400["400 Bad Request:<br/>'Please wait before resubmitting'"]
+    Dup -- No --> Upload["Upload proof to Cloudinary<br/>(if file attached)"]
+    Upload --> Save["Save AttendanceRequest<br/>status = 'pending'"]
+    Save --> Review["HOD / Teacher opens<br/>dashboard, reviews request"]
+    Review --> Decision{"Approve or Reject?<br/>PUT /attendance-requests/{id}/status"}
+    Decision -- Approve --> ApproveMod["Atomic findAndModify:<br/>status pending → approved"]
+    Decision -- Reject --> RejectMod["Atomic findAndModify:<br/>status pending → rejected"]
+    ApproveMod --> ForEach["For each subjectDate:<br/>create Notification<br/>(teacher of that subject)"]
+    ForEach --> TeacherSees["Teacher sees absence in<br/>GET /notifications/teacher/{id}"]
+    TeacherSees --> End1(["End"])
+    RejectMod --> End2(["End"])
+```
+
+**Notes on the flow**
+
+- **Side path (while pending):** the owning student can edit or delete their own request via `PUT`/`DELETE /attendance-requests/{id}` at any point before it's decided; both are blocked once the status leaves `pending`.
+- **Department scoping:** a non-admin reviewer (HOD/teacher) must belong to the same department the request was stamped with (copied from the student at creation time), or the status update is rejected with `403`.
+- **Rejections don't notify:** notifications are only fanned out on approval, one per `subjectDate`, addressed to that subject's teacher — a rejected request produces no notifications.
+- **Atomicity matters:** the pending→decided transition uses `MongoTemplate.findAndModify`, so a second approve/reject call on an already-decided request fails cleanly instead of double-processing it.
 
 ## Prerequisites
 
@@ -208,8 +283,8 @@ DELETE /notifications/{id}
 - ✅ **Duplicate-submission guard**: rejects a new request if an identical pending one (same student + reason) was created in the last 30 seconds.
 - ✅ **Atomic status transitions**: `updateRequestStatus` uses `MongoTemplate.findAndModify` so only a currently-`pending` request can move to approved/rejected; notifications are only generated on approval, one per subject/date, addressed to that subject's teacher.
 - ✅ **Partial unique index** on `sap` (only enforced when `sap` is non-empty) via `MongoIndexConfig`, so teachers/HODs/admins without a SAP number don't collide on `null`.
-- ⚠️ **Security is currently wide open**: `SecurityConfig.filterChain` calls `.anyRequest().permitAll()`. The JWT filter still runs and populates the security context, but no endpoint actually enforces authentication/roles yet — this is a known gap, not a design goal.
-- ⚠️ **Two CORS configs exist**: `CorsConfig` (WebMvcConfigurer) and `SecurityConfig`'s own `corsConfigurationSource`. The Security one is what's actually active for the filter chain (allows `localhost:*`, `192.168.*.*:*`, `*.vercel.app`).
+- ✅ **Endpoint-level authorization enforced**: `SecurityConfig.filterChain` now maps every route to an explicit `hasRole(...)` / `hasAnyRole(...)` / `authenticated()` rule — only `ADMIN` can bulk-delete or CSV-import users, only `STUDENT` can create a request, only `HOD`/`TEACHER` can approve or reject one, and so on. Requests with a missing, invalid, or under-privileged token are rejected with `401`/`403` at the filter chain, before they reach a controller. Fine-grained *ownership* checks (e.g. "only the requesting student or an admin can edit this exact request") still live in the service layer, since that can't be expressed as a static URL pattern.
+- ✅ **Single CORS configuration**: the legacy `CorsConfig` (`WebMvcConfigurer`) has been removed. `SecurityConfig.corsConfigurationSource()` — wired directly into the security filter chain — is now the only CORS source (allows `localhost:*`, `192.168.*.*:*`, `*.vercel.app`).
 - ✅ Full **React frontend** built: 4 role dashboards, dark/light theme, shadcn/ui components.
 
 ## Common Issues

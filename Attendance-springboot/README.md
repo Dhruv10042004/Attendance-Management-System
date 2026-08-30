@@ -8,8 +8,7 @@ Attendance-springboot/
 │   ├── java/com/attendance/
 │   │   ├── AttendanceApplication.java          # Main Spring Boot app
 │   │   ├── config/
-│   │   │   ├── CorsConfig.java                 # CORS configuration
-│   │   │   └── SecurityConfig.java             # JWT Security config
+│   │   │   └── SecurityConfig.java             # JWT Security config — role-based authz + single CORS source
 │   │   ├── controller/
 │   │   │   ├── UserController.java             # User endpoints
 │   │   │   ├── SubjectController.java          # Subject endpoints
@@ -45,6 +44,59 @@ Attendance-springboot/
 │       └── application.yml                     # Configuration file
 └── pom.xml                                     # Maven dependencies
 ```
+
+## Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph Client["Client"]
+        Browser["Browser"]
+    end
+
+    subgraph Frontend["React 18 + Vite SPA"]
+        Pages["Role Dashboards<br/>Admin · HOD · Teacher · Student"]
+        ApiClient["Axios client<br/>(lib/api.js)"]
+    end
+
+    subgraph Backend["This service — Spring Boot 3.2 / Java 17"]
+        Security["JwtAuthenticationFilter +<br/>SecurityConfig"]
+        Controllers["Controllers<br/>User · Subject · AttendanceRequest · Notification"]
+        Services["Services<br/>ownership checks, dedupe guard,<br/>atomic status transitions"]
+        Repos["Spring Data MongoDB Repositories"]
+    end
+
+    subgraph External["External Services"]
+        Mongo[("MongoDB")]
+        Cloudinary[("Cloudinary — proof files")]
+    end
+
+    Browser --> Pages --> ApiClient
+    ApiClient -- "REST /api/*" --> Security --> Controllers
+    Controllers --> Services --> Repos --> Mongo
+    Services -- "upload proof" --> Cloudinary
+```
+
+## Workflow: Attendance Request Lifecycle
+
+```mermaid
+flowchart TD
+    Start(["Student opens<br/>Create Request form"]) --> Fill["Fill name, reason, date(s),<br/>select subjects, add buddies,<br/>attach proof (optional)"]
+    Fill --> Post["POST /attendance-requests<br/>(multipart/form-data)"]
+    Post --> Dup{"Duplicate pending request<br/>in last 30s?"}
+    Dup -- Yes --> Bad400["400 Bad Request:<br/>'Please wait before resubmitting'"]
+    Dup -- No --> Upload["Upload proof to Cloudinary<br/>(if file attached)"]
+    Upload --> Save["Save AttendanceRequest<br/>status = 'pending'"]
+    Save --> Review["HOD / Teacher opens<br/>dashboard, reviews request"]
+    Review --> Decision{"Approve or Reject?<br/>PUT /attendance-requests/{id}/status"}
+    Decision -- Approve --> ApproveMod["Atomic findAndModify:<br/>status pending → approved"]
+    Decision -- Reject --> RejectMod["Atomic findAndModify:<br/>status pending → rejected"]
+    ApproveMod --> ForEach["For each subjectDate:<br/>create Notification<br/>(teacher of that subject)"]
+    ForEach --> TeacherSees["Teacher sees absence in<br/>GET /notifications/teacher/{id}"]
+    TeacherSees --> End1(["End"])
+    RejectMod --> End2(["End"])
+```
+
+While a request is `pending`, its owner can still edit or delete it (`PUT`/`DELETE /attendance-requests/{id}`); both are blocked once it's decided. A non-admin reviewer must belong to the same department as the request, or the status update is rejected with `403`.
 
 ## Prerequisites
 
