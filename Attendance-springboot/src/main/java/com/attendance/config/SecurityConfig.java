@@ -72,7 +72,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/users/bulk/csv").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/users/bulk/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/users/**").hasRole("ADMIN")
-                        .requestMatchers("/users/search", "/users/role/**", "/users/class/**")
+                        .requestMatchers("/users/search", "/users/role/**", "/users/class/**",
+                                "/users/paged", "/users/stats")
                         .hasAnyRole("ADMIN", "HOD")
                         .requestMatchers("/users/teachers").authenticated()
                         .requestMatchers(HttpMethod.GET, "/users/**").authenticated() // self-view; ownership
@@ -93,14 +94,14 @@ public class SecurityConfig {
                         .hasAnyRole("HOD", "TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance-requests").hasAnyRole("HOD", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance-requests/**").authenticated() // ownership
-                                                                                                     // enforced in
-                                                                                                     // service
+                                                                                                    // enforced in
+                                                                                                    // service
                         .requestMatchers(HttpMethod.POST, "/attendance-requests").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.PUT, "/attendance-requests/*/status")
                         .hasAnyRole("HOD", "TEACHER")
                         .requestMatchers(HttpMethod.PUT, "/attendance-requests/**").hasRole("STUDENT") // ownership
-                                                                                                        // enforced
-                                                                                                        // in service
+                                                                                                       // enforced
+                                                                                                       // in service
                         .requestMatchers(HttpMethod.DELETE, "/attendance-requests/**")
                         .hasAnyRole("STUDENT", "ADMIN") // ownership enforced in service
 

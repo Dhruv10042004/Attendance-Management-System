@@ -3,12 +3,17 @@ package com.attendance.service;
 import com.attendance.dto.UserDTO;
 import com.attendance.dto.UserCreateRequest;
 import com.attendance.dto.UserUpdateRequest;
+import com.attendance.dto.UserStatsDTO;
 import com.attendance.entity.User;
 import com.attendance.exception.BadRequestException;
 import com.attendance.exception.ResourceNotFoundException;
 import com.attendance.repository.UserRepository;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +41,41 @@ public class UserService {
                 .stream()
                 .map(user -> modelMapper.map(user, UserDTO.class))
                 .collect(Collectors.toList());
+    }
+
+    public Page<UserDTO> getUsersPaged(int page, int size, String query, String role) {
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 ? 20 : Math.min(size, 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.ASC, "name"));
+
+        boolean hasQuery = query != null && !query.isBlank();
+        boolean hasRole = role != null && !role.equalsIgnoreCase("all") && !role.isBlank();
+
+        Page<User> result;
+        if (hasQuery && hasRole) {
+            result = userRepository
+                    .findByRoleAndNameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCaseOrRoleAndSapContainingIgnoreCase(
+                            role, query, role, query, role, query, pageable);
+        } else if (hasQuery) {
+            result = userRepository
+                    .findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrSapContainingIgnoreCase(
+                            query, query, query, pageable);
+        } else if (hasRole) {
+            result = userRepository.findByRole(role, pageable);
+        } else {
+            result = userRepository.findAll(pageable);
+        }
+
+        return result.map(user -> modelMapper.map(user, UserDTO.class));
+    }
+
+    public UserStatsDTO getUserStats() {
+        return new UserStatsDTO(
+                userRepository.count(),
+                userRepository.countByRole("student"),
+                userRepository.countByRole("teacher"),
+                userRepository.countByRole("hod"),
+                userRepository.countByRole("admin"));
     }
 
     public UserDTO getUserById(String id) {

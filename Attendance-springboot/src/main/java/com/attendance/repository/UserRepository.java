@@ -1,6 +1,8 @@
 package com.attendance.repository;
 
 import com.attendance.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
@@ -19,12 +21,24 @@ public interface UserRepository extends MongoRepository<User, String> {
     List<User> findByClassName(String className);
 
     List<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrSapContainingIgnoreCase(
-        String name, String email, String sap);
+            String name, String email, String sap);
 
     List<User> findByRoleAndNameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCaseOrRoleAndSapContainingIgnoreCase(
-        String role1, String name, String role2, String email, String role3, String sap);
+            String role1, String name, String role2, String email, String role3, String sap);
+
+    // --- paginated variants used by the admin panel ---
+
+    Page<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrSapContainingIgnoreCase(
+            String name, String email, String sap, Pageable pageable);
+
+    Page<User> findByRoleAndNameContainingIgnoreCaseOrRoleAndEmailContainingIgnoreCaseOrRoleAndSapContainingIgnoreCase(
+            String role1, String name, String role2, String email, String role3, String sap, Pageable pageable);
+
+    Page<User> findByRole(String role, Pageable pageable);
 
     boolean existsByEmail(String email);
 
     boolean existsBySap(String sap);
+
+    long countByRole(String role);
 }

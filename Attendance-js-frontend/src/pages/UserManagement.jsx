@@ -1,25 +1,15 @@
-import { useState, useEffect,useRef } from 'react';
-import { Search, Plus, Download, Upload, Edit, Trash2, Filter, X, Check } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Plus, Download, Upload, Edit, Trash2, Filter, X, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import _ from 'lodash';
 import { useTheme } from '../context/ThemeContext';
 import { useForm, Controller } from 'react-hook-form';
 import api from '../lib/api';
 
-// Mock data for demonstration
-const mockUsers = [
-  { id: 1, sap: 'SAP001', name: 'John Doe', email: 'john.doe@example.com', password: 'hashed_password', isFirstLogin: true, className: '10A', role: 'student' },
-  { id: 2, sap: 'SAP002', name: 'Jane Smith', email: 'jane.smith@example.com', password: 'hashed_password', isFirstLogin: false, className: '10A', role: 'student' },
-  { id: 3, sap: 'SAP003', name: 'Robert Johnson', email: 'robert.johnson@example.com', password: 'hashed_password', isFirstLogin: false, className: '10B', role: 'student' },
-  { id: 4, sap: 'SAP004', name: 'Emily Davis', email: 'emily.davis@example.com', password: 'hashed_password', isFirstLogin: false, className: '', role: 'teacher' },
-  { id: 5, sap: 'SAP005', name: 'Michael Wilson', email: 'michael.wilson@example.com', password: 'hashed_password', isFirstLogin: true, className: '', role: 'teacher' },
-  { id: 6, sap: 'SAP006', name: 'Sarah Brown', email: 'sarah.brown@example.com', password: 'hashed_password', isFirstLogin: false, className: '', role: 'hod' },
-  { id: 7, sap: 'SAP007', name: 'David Miller', email: 'david.miller@example.com', password: 'hashed_password', isFirstLogin: false, className: '', role: 'admin' },
-];
+const PAGE_SIZE = 20;
 
 const UserManagement = () => {
   const { theme } = useTheme();
   const bulkFileInputRef = useRef(null);
-  const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
@@ -35,23 +25,50 @@ const UserManagement = () => {
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [selectedRoleToDelete, setSelectedRoleToDelete] = useState('');
 
-  // Count users by role
-  const userCounts = {
-    total: users.length,
-    student: users.filter(user => user.role === 'student').length,
-    teacher: users.filter(user => user.role === 'teacher').length,
-    hod: users.filter(user => user.role === 'hod').length,
-    admin: users.filter(user => user.role === 'admin').length,
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Lightweight stats fetched separately so counter cards don't require
+  // loading every user row
+  const [stats, setStats] = useState({ total: 0, students: 0, teachers: 0, hods: 0, admins: 0 });
+
+  const refreshStats = () => {
+    api.get('/users/stats')
+      .then(res => setStats(res.data))
+      .catch(() => {});
   };
 
-  // Add a useEffect to fetch users when component mounts:
+  const refreshUsers = () => setRefreshKey(k => k + 1);
+
+  // Fetch stats once on mount, and again whenever refreshUsers() is triggered
   useEffect(() => {
-    const fetchUsers = async () => {
+    refreshStats();
+  }, [refreshKey]);
+
+  // Reset to first page whenever the search term or role filter changes
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, selectedRole]);
+
+  // Fetch the current page whenever page/search/role/refreshKey changes
+  useEffect(() => {
+    const fetchPage = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/users');
-        setUsers(response.data);
-        setFilteredUsers(response.data);
+        const response = await api.get('/users/paged', {
+          params: {
+            page,
+            size: PAGE_SIZE,
+            query: searchTerm || undefined,
+            role: selectedRole
+          }
+        });
+        setFilteredUsers(response.data.content || []);
+        setTotalPages(response.data.totalPages || 0);
+        setTotalElements(response.data.totalElements || 0);
         setLoading(false);
       } catch (err) {
         setError(err.message);
@@ -59,63 +76,29 @@ const UserManagement = () => {
       }
     };
 
-    fetchUsers();
-  }, []);
-
-  // Update the filtering useEffect:
-  useEffect(() => {
-    const searchUsers = async () => {
-      try {
-        setLoading(true);
-        // If there's no search term and role is "all", fetch all users
-        if (!searchTerm && selectedRole === 'all') {
-          const response = await api.get('/users');
-          setFilteredUsers(response.data);
-        } else {
-          // Otherwise, use the search endpoint
-          const response = await api.get('/users/search', {
-            params: {
-              query: searchTerm,
-              role: selectedRole
-            }
-          });
-          setFilteredUsers(response.data);
-        }
-        setLoading(false);
-      } catch (err) {
-        setError(err.message);
-        setLoading(false);
-      }
-    };
-
-    // Debounce search requests
     const debounceTimer = setTimeout(() => {
-      searchUsers();
+      fetchPage();
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchTerm, selectedRole]);
+  }, [page, searchTerm, selectedRole, refreshKey]);
 
   // Handle add user
   const handleAddUser = async (data) => {
     try {
-      // Log the data being sent to the API
       console.log('Sending data to API:', data);
-      
-      // Ensure all required fields are present
+
       if (!data.name || !data.email || !data.password || !data.role) {
         setError('All required fields must be filled in.');
         return;
       }
-      
+
       setLoading(true);
-      const response = await api.post('/users', data);
-      console.log('API Response:', response.data);
-      
-      setUsers([...users, response.data]);
-      setFilteredUsers([...filteredUsers, response.data]);
+      await api.post('/users', data);
+
       setIsAddModalOpen(false);
       setLoading(false);
+      refreshUsers();
     } catch (err) {
       console.error('Error creating user:', err.response?.data || err);
       setError(err.response?.data?.message || err.message);
@@ -125,52 +108,35 @@ const UserManagement = () => {
 
   // Handle update user
   const handleUpdateUser = async (data) => {
-  try {
-    setLoading(true);
-    const response = await api.put(`/users/${currentUser.id}`, data);
-    const updatedUsers = users.map(user => 
-      user.id === currentUser.id ? response.data : user
-    );
-    setUsers(updatedUsers);
-    setFilteredUsers(updatedUsers.filter(user => {
-      const matchesSearch = 
-        !searchTerm ||
-        user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.sap.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesRole = selectedRole === 'all' || user.role === selectedRole;
-      return matchesSearch && matchesRole;
-    }));
-    setIsEditModalOpen(false);
-    setLoading(false);
-  } catch (err) {
-    setError(err.response?.data?.message || err.message);
-    setLoading(false);
-  }
+    try {
+      setLoading(true);
+      await api.put(`/users/${currentUser.id}`, data);
+      setIsEditModalOpen(false);
+      setLoading(false);
+      refreshUsers();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+      setLoading(false);
+    }
   };
 
   // Handle delete user
   const handleDeleteUser = async () => {
-  try {
-    setLoading(true);
-    await api.delete(`/users/${currentUser.id}`);
-    const updatedUsers = users.filter(user => user.id !== currentUser.id);
-    setUsers(updatedUsers);
-    setFilteredUsers(updatedUsers.filter(user => {
-      const matchesSearch = 
-        !searchTerm ||
-        user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.sap.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesRole = selectedRole === 'all' || user.role === selectedRole;
-      return matchesSearch && matchesRole;
-    }));
-    setIsDeleteModalOpen(false);
-    setLoading(false);
-  } catch (err) {
-    setError(err.response?.data?.message || err.message);
-    setLoading(false);
-  }
+    try {
+      setLoading(true);
+      await api.delete(`/users/${currentUser.id}`);
+      setIsDeleteModalOpen(false);
+      setLoading(false);
+      // If we just deleted the only row on the last page, step back a page
+      if (filteredUsers.length === 1 && page > 0) {
+        setPage(p => p - 1);
+      } else {
+        refreshUsers();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || err.message);
+      setLoading(false);
+    }
   };
 
   // Handle bulk add
@@ -182,34 +148,24 @@ const UserManagement = () => {
 
     try {
       setLoading(true);
-      
-      // Create form data to send the file
+
       const formData = new FormData();
       formData.append('file', bulkFile);
-      
-      // Send the file directly to the new endpoint
+
       const response = await api.post('/users/bulk/csv', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
-      
-      // Show success message
+
       setError(null);
-      
-      // Refresh the user list
-      const updatedResponse = await api.get('/users');
-      const refreshedUsers =  updatedResponse.data;
-      setUsers(refreshedUsers);
-      setFilteredUsers(refreshedUsers);
-      
-      // Reset state
+
       setBulkFile(null);
       setBulkFileSelected(false);
       setIsBulkAddModalOpen(false);
       setLoading(false);
-      
-      // You might want to show a success notification here
+      refreshUsers();
+
       alert(`Successfully imported ${response.data.created.length} users. ${response.data.skipped.length} users were skipped.`);
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message;
@@ -527,14 +483,11 @@ const UserManagement = () => {
 
     await api.delete(`/users/bulk/${selectedRoleToDelete}`);
 
-    // Refresh the user list
-    const updatedResponse = await api.get('/users');
-    setUsers(updatedResponse.data);
-    setFilteredUsers(updatedResponse.data);
-
     setIsBulkDeleteModalOpen(false);
     setSelectedRoleToDelete('');
     setLoading(false);
+    setPage(0);
+    refreshUsers();
 
     alert(`Successfully deleted all ${selectedRoleToDelete}s`);
   } catch (err) {
@@ -551,23 +504,23 @@ const UserManagement = () => {
         <h2 className="text-xl font-bold mb-4">User Statistics</h2>
         <div className="grid grid-cols-5 gap-4">
           <div className={`${theme === 'dark' ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'} p-4 rounded-lg text-center`}>
-            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>{userCounts.total}</div>
+            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>{stats.total}</div>
             <div className={`text-sm ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`}>Total Users</div>
           </div>
           <div className={`${theme === 'dark' ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'} p-4 rounded-lg text-center`}>
-            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-green-300' : 'text-green-700'}`}>{userCounts.student}</div>
+            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-green-300' : 'text-green-700'}`}>{stats.students}</div>
             <div className={`text-sm ${theme === 'dark' ? 'text-green-400' : 'text-green-600'}`}>Students</div>
           </div>
           <div className={`${theme === 'dark' ? 'bg-purple-900 text-purple-300' : 'bg-purple-100 text-purple-700'} p-4 rounded-lg text-center`}>
-            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-purple-300' : 'text-purple-700'}`}>{userCounts.teacher}</div>
+            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-purple-300' : 'text-purple-700'}`}>{stats.teachers}</div>
             <div className={`text-sm ${theme === 'dark' ? 'text-purple-400' : 'text-purple-600'}`}>Teachers</div>
           </div>
           <div className={`${theme === 'dark' ? 'bg-yellow-900 text-yellow-300' : 'bg-yellow-100 text-yellow-700'} p-4 rounded-lg text-center`}>
-            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-yellow-300' : 'text-yellow-700'}`}>{userCounts.hod}</div>
+            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-yellow-300' : 'text-yellow-700'}`}>{stats.hods}</div>
             <div className={`text-sm ${theme === 'dark' ? 'text-yellow-400' : 'text-yellow-600'}`}>HODs</div>
           </div>
           <div className={`${theme === 'dark' ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-700'} p-4 rounded-lg text-center`}>
-            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-red-300' : 'text-red-700'}`}>{userCounts.admin}</div>
+            <div className={`text-3xl font-bold ${theme === 'dark' ? 'text-red-300' : 'text-red-700'}`}>{stats.admins}</div>
             <div className={`text-sm ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}`}>Admins</div>
           </div>
         </div>
@@ -639,7 +592,13 @@ const UserManagement = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.length > 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={7} className={`py-4 text-center ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Loading...
+                </td>
+              </tr>
+            ) : filteredUsers.length > 0 ? (
               filteredUsers.map((user) => (
                 <tr key={user.id} className={theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
                   <td className={`py-2 px-4 border-b ${theme === 'dark' ? 'border-gray-600' : ''}`}>{user.sap}</td>
@@ -696,6 +655,36 @@ const UserManagement = () => {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between mt-4">
+        <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+          {totalElements === 0
+            ? '0 users'
+            : `Showing ${page * PAGE_SIZE + 1}-${Math.min((page + 1) * PAGE_SIZE, totalElements)} of ${totalElements}`}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            className={`p-2 border rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed ${theme === 'dark' ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}
+            disabled={page === 0 || loading}
+            onClick={() => setPage(p => Math.max(p - 1, 0))}
+          >
+            <ChevronLeft size={16} />
+            Previous
+          </button>
+          <span className={`px-2 text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+            Page {totalPages === 0 ? 0 : page + 1} of {totalPages}
+          </span>
+          <button
+            className={`p-2 border rounded-lg flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed ${theme === 'dark' ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}
+            disabled={page + 1 >= totalPages || loading}
+            onClick={() => setPage(p => p + 1)}
+          >
+            Next
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Add User Modal */}
@@ -878,7 +867,6 @@ const UserManagement = () => {
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-red-700">
                 You are about to delete ALL {selectedRoleToDelete}s from the system.
-                This will affect {users.filter(user => user.role === selectedRoleToDelete).length} users.
               </p>
             </div>
           )}

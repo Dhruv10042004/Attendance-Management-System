@@ -7,6 +7,7 @@ import com.attendance.security.JwtTokenProvider;
 import com.attendance.service.CsvImportService;
 import com.attendance.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -39,6 +40,24 @@ public class UserController {
     public ResponseEntity<ApiResponse<List<UserDTO>>> getAllUsers() {
         List<UserDTO> users = userService.getAllUsers();
         return ResponseEntity.ok(new ApiResponse<>(true, "Users retrieved successfully", users));
+    }
+
+    // Get paginated users (for admin panel — avoids loading the whole collection)
+    @GetMapping("/paged")
+    public ResponseEntity<ApiResponse<Page<UserDTO>>> getUsersPaged(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "all") String role) {
+        Page<UserDTO> users = userService.getUsersPaged(page, size, query, role);
+        return ResponseEntity.ok(new ApiResponse<>(true, "Users retrieved successfully", users));
+    }
+
+    // Get lightweight user counts for dashboard stat cards
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<UserStatsDTO>> getUserStats() {
+        UserStatsDTO stats = userService.getUserStats();
+        return ResponseEntity.ok(new ApiResponse<>(true, "Stats retrieved successfully", stats));
     }
 
     // Get user by ID
