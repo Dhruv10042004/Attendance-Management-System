@@ -30,7 +30,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import api from '../lib/api';
 
-
+const toLocalIsoString = (date) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T` +
+          `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
 export default function StudentDashboard() {
   const { user } = useAuth();
   const userId = user?.id;
@@ -80,6 +84,10 @@ const { theme, toggleTheme } = useTheme();
   const [isDateRange, setIsDateRange] = useState(false);
   const [endDate, setEndDate] = useState(null);
   const[submitting,setSubmitting]=useState(false);
+  // Serializes a Date using its LOCAL calendar date/time, not toISOString()'s UTC shift.
+  // Prevents attendance requests from silently landing on the wrong calendar day
+  // for users east/west of UTC.
+  
   const minDate = new Date();
   const maxDate = new Date();
   maxDate.setDate(minDate.getDate() + 7);
@@ -292,7 +300,7 @@ const { theme, toggleTheme } = useTheme();
           const subjectId = subject.id;
           if (!subjectId) return null;
           const subjectDate = getDateForDayOfWeek(subject.day, startDate, endDateForRange);
-          return subjectDate ? { subjectId, date: subjectDate.toISOString() } : null;
+          return subjectDate ? { subjectId, date: subjectDate.toLocalIsoString() } : null;
         })
         .filter(Boolean)
     );
@@ -317,7 +325,7 @@ const { theme, toggleTheme } = useTheme();
     formData.append('name', createRequestForm.name);
     formData.append('reason', createRequestForm.reason);
     formData.append('student_id', userId);
-    formData.append('date', requestDate.toISOString());
+    formData.append('date', requestDate.toLocalIsoString());
 
     selectedStudents.forEach(student => {
       if (student.id) {
@@ -385,10 +393,10 @@ const { theme, toggleTheme } = useTheme();
       const formData = new FormData();
       formData.append('name', editForm.name);
       formData.append('reason', editForm.reason);
-      formData.append('date', requestDate.toISOString());
+      formData.append('date', requestDate.toLocalIsoString());
 
       if (isDateRange && endDate) {
-        formData.append('end_date', endDate.toISOString());
+        formData.append('end_date', endDate.toLocalIsoString());
       }
 
       formData.append('subjectDatesJson', buildSubjectDatesJson(requestDate, isDateRange ? endDate : null));

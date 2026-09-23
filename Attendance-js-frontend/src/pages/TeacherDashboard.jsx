@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../lib/api';
 import DatePicker from 'react-datepicker';
+import AttendanceSheetDialog from '../components/AttedanceSheetDialog';
 import "react-datepicker/dist/react-datepicker.css";
 import { format, isToday, addDays, isAfter, isBefore, isEqual } from 'date-fns';
-import { Loader2, User, LogOut, Settings, SunIcon, MoonIcon, Calendar, Filter } from 'lucide-react';
+import { Loader2, User, LogOut, Settings, SunIcon, MoonIcon, Calendar, Filter, ClipboardCheck,FileSpreadsheet } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +30,7 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '../components/ui/table';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
+import AttendanceMarkingDialog from '../components/AttendanceMarkingDialog';
 
 // Temporary teacher ID - will be replaced with auth context in production
 
@@ -44,6 +46,7 @@ const teacherId = user?.id;
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState(addDays(new Date(), 7));
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isMarkAttendanceOpen, setIsMarkAttendanceOpen] = useState(false);
   const [userProfile, setUserProfile] = useState({
     name: '',
     email: '',
@@ -53,7 +56,7 @@ const teacherId = user?.id;
   });
   const [updateSuccess, setUpdateSuccess] = useState(false);
   const [updateError, setUpdateError] = useState('');
-  
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   // Fetch teacher's notifications for the selected date range
   const fetchAbsencesByDateRange = async () => {
     try {
@@ -274,7 +277,24 @@ validNotifications.forEach(notification => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Date Filter */}
         <div className="mb-8 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-          <h2 className="text-xl font-semibold mb-4">Filter by Date Range</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <h2 className="text-xl font-semibold">Filter by Date Range</h2>
+            <Button
+              onClick={() => setIsMarkAttendanceOpen(true)}
+              className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+            >
+              <ClipboardCheck className="h-4 w-4 mr-2" />
+              Mark Attendance
+            </Button>
+                <Button
+              onClick={() => setIsSheetOpen(true)}
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              View Attendance Sheet
+            </Button>
+          </div>
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium mb-1">Start Date</label>
@@ -486,6 +506,18 @@ validNotifications.forEach(notification => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mark Attendance Modal */}
+      <AttendanceMarkingDialog
+        open={isMarkAttendanceOpen}
+        onOpenChange={setIsMarkAttendanceOpen}
+        teacherId={teacherId}
+      />
+      <AttendanceSheetDialog
+        open={isSheetOpen}
+        onOpenChange={setIsSheetOpen}
+        teacherId={teacherId}
+      />
     </div>
   );
 }

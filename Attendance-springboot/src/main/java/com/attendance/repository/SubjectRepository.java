@@ -18,4 +18,6 @@ public interface SubjectRepository extends MongoRepository<Subject, String> {
     List<Subject> findByClassNameAndDay(String className, String day);
 
     List<Subject> findByNameContainingIgnoreCase(String name);
+
+    List<Subject> findByTeacherIdAndNameAndClassName(String teacherId, String name, String className);
 }

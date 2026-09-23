@@ -16,4 +16,6 @@ public interface NotificationRepository extends MongoRepository<Notification, St
     List<Notification> findByIsRead(Boolean isRead);
 
     List<Notification> findByAttendanceRequestId(String attendanceRequestId);
+
+    List<Notification> findBySubjectId(String subjectId);
 }

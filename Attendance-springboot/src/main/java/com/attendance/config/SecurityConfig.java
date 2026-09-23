@@ -110,6 +110,22 @@ public class SecurityConfig {
                         .requestMatchers("/notifications/student/**").authenticated()
                         .requestMatchers("/notifications/**").hasAnyRole("ADMIN", "HOD")
 
+
+                        // --- Attendance marking ---
+                        .requestMatchers(HttpMethod.GET, "/attendance/roster").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/attendance/mark").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/sheet").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/lecture-slots").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/roster").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/attendance/mark").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/sheet").hasAnyRole("TEACHER", "ADMIN")
+                        
+
+                        .requestMatchers(HttpMethod.GET, "/attendance/lecture-slots").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/roster").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/attendance/mark").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/courses").hasAnyRole("TEACHER", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/attendance/sheet").hasAnyRole("TEACHER", "ADMIN")
                         .anyRequest().authenticated());
 
         http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
