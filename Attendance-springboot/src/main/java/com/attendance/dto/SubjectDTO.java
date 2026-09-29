@@ -17,4 +17,12 @@ public class SubjectDTO {
     private String className;
     private String day;
     private String teacherName;
+
+    // Null/empty = whole class. Non-empty = only these student ids are enrolled
+    // (elective / one lab batch).
+    private java.util.List<String> enrolledStudentIds;
+
+    // Other classes this slot also appears in (multi-class lecture). Null/empty =
+    // just className.
+    private java.util.List<String> extraClassNames;
 }

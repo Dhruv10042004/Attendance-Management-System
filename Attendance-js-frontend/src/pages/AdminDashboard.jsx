@@ -9,7 +9,8 @@ import {
   Palette, 
   Menu,
   X, 
-  ChevronUp
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
@@ -108,6 +109,7 @@ export default function AdminDashboard() {
 
   // User menu items
   const userMenuItems = [
+    { icon: <Sparkles size={18} />, label: 'AI Assistant', onClick: () => navigate('/ai') },
     // { icon: <Settings size={18} />, label: 'Settings', onClick: () => console.log('Settings clicked') },
     // { icon: <Palette size={18} />, label: 'Theme Preferences', onClick: toggleTheme },
     { icon: <LogOut size={18} />, label: 'Logout', onClick: () => {

@@ -8,6 +8,7 @@ import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import {ThemeProvider} from './context/ThemeContext';
 import Unauthorized from './components/Unauthorized';
+import AiAssistant from './pages/AiAssistant';
 
 function App() {
   return (
@@ -37,6 +38,11 @@ function App() {
             {/* Protected routes for students */}
             <Route element={<ProtectedRoute allowedRoles={['student']} />}>
               <Route path="/student" element={<StudentDashboard />} />
+            </Route>
+
+            {/* AI assistant: staff roles only (backend enforces this too) */}
+            <Route element={<ProtectedRoute allowedRoles={['admin', 'hod', 'teacher']} />}>
+              <Route path="/ai" element={<AiAssistant />} />
             </Route>
 
             {/* Redirect root to login */}

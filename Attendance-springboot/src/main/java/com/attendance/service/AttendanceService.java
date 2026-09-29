@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
@@ -48,19 +49,21 @@ public class AttendanceService {
 
     // ---------- helpers ----------
 
-        /**
+    /**
      * Duration of a lecture slot in hours, computed from its HH:mm start/end times.
      * Falls back to 1.0 hour if the times are missing/unparseable, so a
      * misconfigured slot still contributes something rather than zeroing out
      * the whole percentage calculation.
      */
-    private double slotDurationHours(String startTime, String endTime) {
-        if (startTime == null || endTime == null) return 1.0;
+    double slotDurationHours(String startTime, String endTime) { // package-private: reused by AttendanceStatsService
+        if (startTime == null || endTime == null)
+            return 1.0;
         try {
             LocalTime start = LocalTime.parse(startTime.trim());
             LocalTime end = LocalTime.parse(endTime.trim());
             long minutes = ChronoUnit.MINUTES.between(start, end);
-            if (minutes <= 0) return 1.0; // guards against bad data (end <= start)
+            if (minutes <= 0)
+                return 1.0; // guards against bad data (end <= start)
             return minutes / 60.0;
         } catch (DateTimeParseException e) {
             return 1.0;
@@ -133,6 +136,80 @@ public class AttendanceService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Students who actually take THIS slot: the whole class, unless the subject
+     * restricts it to a
+     * specific list (an elective, or one batch of a split lab). Used for both
+     * marking and rostering,
+     * so a teacher only ever sees/marks the students who are really meant to be
+     * there.
+     */
+    /**
+     * Students who actually take THIS slot: the whole class, unless the subject
+     * restricts it to a
+     * specific list (an elective, or one batch of a split lab). Resolved by id
+     * directly — not by
+     * intersecting with one class's roster — so a cross-class elective (e.g. one
+     * subject shared by
+     * I1/I2/I3) still gets its real roster instead of silently losing everyone
+     * outside className.
+     */
+    private List<User> getRosterStudents(Subject subject) {
+        List<String> enrolled = subject.getEnrolledStudentIds();
+        if (enrolled == null || enrolled.isEmpty())
+            return getStudentsOfClasses(subject.classesServed());
+        return sortByName(userRepository.findAllById(enrolled));
+    }
+
+    /**
+     * Students of one or more classes (a shared lecture serves several),
+     * de-duplicated, sorted by name.
+     */
+    private List<User> getStudentsOfClasses(Collection<String> classNames) {
+        Map<String, User> byId = new LinkedHashMap<>();
+        for (String c : classNames) {
+            for (User u : getClassStudentsSorted(c))
+                byId.putIfAbsent(u.getId(), u);
+        }
+        return sortByName(byId.values());
+    }
+
+    private List<User> sortByName(Iterable<User> users) {
+        List<User> list = new ArrayList<>();
+        users.forEach(list::add);
+        list.sort(
+                Comparator.comparing(u -> Optional.ofNullable(u.getName()).orElse(""), String.CASE_INSENSITIVE_ORDER));
+        return list;
+    }
+
+    /**
+     * Students to show on a combined attendance sheet for a (subjectName,
+     * className) course made up
+     * of one or more timetable slots. Unrestricted (or every restriction unioning
+     * back to the whole
+     * class, as with two batch-split lab slots) yields the whole class, same as
+     * before this feature
+     * existed. Any genuine restriction narrows the sheet to only the students
+     * enrolled somewhere in it.
+     */
+    private List<User> sheetStudents(List<Subject> matchingSlots, String className) {
+        boolean anyRestricted = matchingSlots.stream()
+                .anyMatch(s -> s.getEnrolledStudentIds() != null && !s.getEnrolledStudentIds().isEmpty());
+        if (!anyRestricted) {
+            Set<String> classes = new LinkedHashSet<>();
+            classes.add(className);
+            matchingSlots.forEach(s -> classes.addAll(s.classesServed()));
+            return getStudentsOfClasses(classes);
+        }
+
+        Set<String> unionIds = matchingSlots.stream()
+                .flatMap(s -> s.getEnrolledStudentIds() == null
+                        ? Stream.<String>empty()
+                        : s.getEnrolledStudentIds().stream())
+                .collect(Collectors.toSet());
+        return sortByName(userRepository.findAllById(unionIds)); // by id: covers cross-class electives too
+    }
+
     // ---------- lecture slots (marking dropdown — one entry per physical
     // occurrence) ----------
 
@@ -175,7 +252,7 @@ public class AttendanceService {
         LocalDate date = parseDate(dateStr);
         assertScheduledLecture(subject, date);
 
-        List<User> students = getClassStudentsSorted(subject.getClassName());
+        List<User> students = getRosterStudents(subject);
 
         Set<String> grantedStudentIds = new HashSet<>();
         for (var notification : notificationRepository.findBySubjectId(subjectId)) {
@@ -225,9 +302,19 @@ public class AttendanceService {
                             + " lecture can no longer be edited (only editable on the lecture's own date)");
         }
 
+        // Defense in depth: even if the request carries an id outside this slot's
+        // roster (stale
+        // client state, tampered payload), a restricted subject only ever accepts its
+        // own students.
+        List<String> enrolledIds = subject.getEnrolledStudentIds();
+        Set<String> allowedIds = enrolledIds == null || enrolledIds.isEmpty() ? null : new HashSet<>(enrolledIds);
+
         String currentUserId = securityUtil.getCurrentUserId();
         if (request.getRecords() != null) {
             for (MarkAttendanceRequest.Entry entry : request.getRecords()) {
+                if (allowedIds != null && !allowedIds.contains(entry.getStudentId())) {
+                    continue; // not enrolled in this elective/batch — ignore rather than fail the whole batch
+                }
                 AttendanceRecord record = attendanceRecordRepository
                         .findBySubjectIdAndDateAndStudentId(request.getSubjectId(), date, entry.getStudentId())
                         .orElseGet(AttendanceRecord::new);
@@ -279,7 +366,7 @@ public class AttendanceService {
     // ---------- attendance sheet (aggregated across every slot of the course)
     // ----------
 
-        public AttendanceSheetDTO getAttendanceSheet(String requestedTeacherId, String subjectName, String className) {
+    public AttendanceSheetDTO getAttendanceSheet(String requestedTeacherId, String subjectName, String className) {
         String teacherId = resolveTeacherId(requestedTeacherId);
 
         List<Subject> matchingSlots = subjectRepository
@@ -326,7 +413,14 @@ public class AttendanceService {
             byStudentColumn.computeIfAbsent(r.getStudentId(), k -> new HashMap<>()).put(key, r.getPresent());
         }
 
-        List<User> students = getClassStudentsSorted(className);
+        // If ANY slot in this course restricts its roster, only show students enrolled
+        // in at least one
+        // of them (a true elective). If every slot is unrestricted, or restrictions
+        // between slots union
+        // back to the whole class (e.g. two batch-split lab slots covering everyone
+        // between them),
+        // this naturally reduces to the original "every class student" behaviour.
+        List<User> students = sheetStudents(matchingSlots, className);
 
         List<AttendanceSheetRowDTO> rows = new ArrayList<>();
         for (User s : students) {
@@ -344,14 +438,16 @@ public class AttendanceService {
                 } else if (p != null) {
                     marksByColumn.put(col.getKey(), "A");
                 } else {
-                    marksByColumn.put(col.getKey(), "-"); // never marked (e.g. joined class later) — not counted either way
+                    marksByColumn.put(col.getKey(), "-"); // never marked (e.g. joined class later) — not counted either
+                                                          // way
                     totalHours -= col.getDurationHours(); // don't penalize for lectures that predate enrollment
                 }
             }
 
             double pct = totalHours <= 0 ? 0.0 : Math.round(presentHours * 10000.0 / totalHours) / 100.0;
 
-            rows.add(new AttendanceSheetRowDTO(s.getId(), s.getSap(), s.getName(), marksByColumn, presentHours, totalHours, pct));
+            rows.add(new AttendanceSheetRowDTO(s.getId(), s.getSap(), s.getName(), marksByColumn, presentHours,
+                    totalHours, pct));
         }
 
         return new AttendanceSheetDTO(subjectName, className, lectureColumns, rows);

@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
 import { Input } from '../components/ui/input';
-import { Loader2, User, LogOut, Settings, SunIcon, MoonIcon, Search as SearchIcon, Filter, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { Sparkles, Loader2, User, LogOut, Settings, SunIcon, MoonIcon, Search as SearchIcon, Filter, CheckCircle, XCircle, FileText } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
@@ -264,6 +264,9 @@ export default function HodDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">HOD Dashboard</h1>
           <div className="flex items-center">
+    <button type="button" onClick={() => navigate('/ai')} className="flex items-center gap-1 px-3 py-1.5 mr-2 rounded-md text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+      <Sparkles className="h-4 w-4" /> AI Assistant
+    </button>
     <button type="button" onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors mr-2" aria-label="Toggle theme">
       {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
     </button>

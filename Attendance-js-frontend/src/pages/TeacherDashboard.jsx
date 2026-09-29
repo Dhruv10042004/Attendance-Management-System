@@ -4,7 +4,7 @@ import DatePicker from 'react-datepicker';
 import AttendanceSheetDialog from '../components/AttedanceSheetDialog';
 import "react-datepicker/dist/react-datepicker.css";
 import { format, isToday, addDays, isAfter, isBefore, isEqual } from 'date-fns';
-import { Loader2, User, LogOut, Settings, SunIcon, MoonIcon, Calendar, Filter, ClipboardCheck,FileSpreadsheet } from 'lucide-react';
+import { Sparkles, Loader2, User, LogOut, Settings, SunIcon, MoonIcon, Calendar, Filter, ClipboardCheck,FileSpreadsheet } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -227,6 +227,9 @@ validNotifications.forEach(notification => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Teacher Dashboard</h1>
           <div className="flex items-center">
+    <button type="button" onClick={() => navigate('/ai')} className="flex items-center gap-1 px-3 py-1.5 mr-2 rounded-md text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+      <Sparkles className="h-4 w-4" /> AI Assistant
+    </button>
     <button type="button" onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors mr-2" aria-label="Toggle theme">
       {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
     </button>

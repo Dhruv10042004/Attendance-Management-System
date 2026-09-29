@@ -70,6 +70,23 @@ export default function AttendanceMarkingDialog({ open, onOpenChange, teacherId 
     }));
   };
 
+  const markAllPresent = () => {
+    if (!roster?.editable) return;
+
+    setRoster((prev) => {
+      const allPresent = prev.students.every(
+        (student) => student.present
+      );
+
+      return {
+        ...prev,
+        students: prev.students.map((student) => ({
+          ...student,
+          present: !allPresent,
+        })),
+      };
+    });
+  };
   const handleSave = async () => {
     if (!roster || !selectedSlot || !roster.editable) return;
     try {
@@ -156,42 +173,78 @@ export default function AttendanceMarkingDialog({ open, onOpenChange, teacherId 
           )}
 
           {loadingRoster ? (
-            <div className="flex justify-center py-6"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
           ) : roster ? (
-            <div className="border border-gray-200 dark:border-gray-700 rounded-md divide-y divide-gray-200 dark:divide-gray-700 max-h-72 overflow-y-auto">
-              {roster.students.length === 0 ? (
-                <div className="p-4 text-center text-sm text-gray-500">
-                  No students found in division {roster.className}.
+            <div className="grid gap-2">
+              {roster.editable && roster.students.length > 0 && (
+                <div className="flex justify-end">
+                  {(() => {
+                    const allPresent = roster.students.every(
+                      (student) => student.present
+                    );
+
+                    return (
+                      <Button
+                        type="button"
+                        onClick={markAllPresent}
+                        disabled={saving}
+                        className={
+                          allPresent
+                            ? "bg-red-600 hover:bg-red-700 text-white"
+                            : "bg-green-600 hover:bg-green-700 text-white"
+                        }
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+
+                        {allPresent ? "All Absent" : "All Present"}
+                      </Button>
+                    );
+                  })()}
                 </div>
-              ) : (
-                roster.students.map((s) => (
-                  <label
-                    key={s.studentId}
-                    className={`flex items-center justify-between gap-3 p-2 px-3 ${
-                      roster.editable ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700' : 'cursor-not-allowed opacity-80'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={s.present}
-                        disabled={!roster.editable}
-                        onChange={() => togglePresent(s.studentId)}
-                        className="h-4 w-4"
-                      />
-                      <div>
-                        <div className="font-medium text-sm">{s.name}</div>
-                        <div className="text-xs text-gray-500">SAP: {s.sap}</div>
-                      </div>
-                    </div>
-                    {s.grantedByHod && (
-                      <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Excused (HOD)
-                      </Badge>
-                    )}
-                  </label>
-                ))
               )}
+              <div className="border border-gray-200 dark:border-gray-700 rounded-md divide-y divide-gray-200 dark:divide-gray-700 max-h-72 overflow-y-auto">
+                {roster.students.length === 0 ? (
+                  <div className="p-4 text-center text-sm text-gray-500">
+                    No students found in division {roster.className}.
+                  </div>
+                ) : (
+                  roster.students.map((s) => (
+                    <label
+                      key={s.studentId}
+                      className={`flex items-center justify-between gap-3 p-2 px-3 ${roster.editable
+                        ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700'
+                        : 'cursor-not-allowed opacity-80'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={s.present}
+                          disabled={!roster.editable}
+                          onChange={() => togglePresent(s.studentId)}
+                          className="h-4 w-4"
+                        />
+
+                        <div>
+                          <div className="font-medium text-sm">{s.name}</div>
+                          <div className="text-xs text-gray-500">
+                            SAP: {s.sap}
+                          </div>
+                        </div>
+                      </div>
+
+                      {s.grantedByHod && (
+                        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Excused (HOD)
+                        </Badge>
+                      )}
+                    </label>
+                  ))
+                )}
+              </div>
             </div>
           ) : null}
         </div>

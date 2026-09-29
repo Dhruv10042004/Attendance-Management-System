@@ -83,6 +83,9 @@ public class SecurityConfig {
 
                         // --- Subjects ---
                         .requestMatchers(HttpMethod.GET, "/subjects/**").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/student-groups/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.POST, "/student-groups/**").hasAnyRole("ADMIN", "HOD")
+                        .requestMatchers(HttpMethod.DELETE, "/student-groups/**").hasAnyRole("ADMIN", "HOD")
                         .requestMatchers(HttpMethod.POST, "/subjects/**").hasAnyRole("ADMIN", "HOD")
                         .requestMatchers(HttpMethod.PUT, "/subjects/**").hasAnyRole("ADMIN", "HOD")
                         .requestMatchers(HttpMethod.DELETE, "/subjects/**").hasAnyRole("ADMIN", "HOD")
@@ -110,8 +113,8 @@ public class SecurityConfig {
                         .requestMatchers("/notifications/student/**").authenticated()
                         .requestMatchers("/notifications/**").hasAnyRole("ADMIN", "HOD")
 
-
                         // --- Attendance marking ---
+                        .requestMatchers(HttpMethod.GET, "/attendance/my-sheet").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.GET, "/attendance/roster").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/attendance/mark").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance/sheet").hasAnyRole("TEACHER", "ADMIN")
@@ -119,13 +122,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/attendance/roster").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/attendance/mark").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance/sheet").hasAnyRole("TEACHER", "ADMIN")
-                        
 
                         .requestMatchers(HttpMethod.GET, "/attendance/lecture-slots").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance/roster").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/attendance/mark").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance/courses").hasAnyRole("TEACHER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/attendance/sheet").hasAnyRole("TEACHER", "ADMIN")
+                        // --- AI assistant (role scoping is enforced again inside
+                        // AttendanceStatsService) ---
+                        .requestMatchers("/ai/**").hasAnyRole("ADMIN", "HOD", "TEACHER")
+
                         .anyRequest().authenticated());
 
         http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);

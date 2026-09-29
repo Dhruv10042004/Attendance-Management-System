@@ -11,39 +11,49 @@ import java.time.LocalDateTime;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
-            ResourceNotFoundException ex, WebRequest request) {
+        @ExceptionHandler(ResourceNotFoundException.class)
+        public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
+                        ResourceNotFoundException ex, WebRequest request) {
 
-        ErrorResponse errorResponse = new ErrorResponse(
-                LocalDateTime.now(),
-                ex.getMessage(),
-                "Resource Not Found",
-                HttpStatus.NOT_FOUND.value());
-        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
-    }
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                ex.getMessage(),
+                                "Resource Not Found",
+                                HttpStatus.NOT_FOUND.value());
+                return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+        }
 
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<ErrorResponse> handleBadRequestException(
-            BadRequestException ex, WebRequest request) {
+        @ExceptionHandler(BadRequestException.class)
+        public ResponseEntity<ErrorResponse> handleBadRequestException(
+                        BadRequestException ex, WebRequest request) {
 
-        ErrorResponse errorResponse = new ErrorResponse(
-                LocalDateTime.now(),
-                ex.getMessage(),
-                "Bad Request",
-                HttpStatus.BAD_REQUEST.value());
-        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
-    }
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                ex.getMessage(),
+                                "Bad Request",
+                                HttpStatus.BAD_REQUEST.value());
+                return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+        }
 
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGlobalException(
-            Exception ex, WebRequest request) {
+        @ExceptionHandler(com.attendance.ai.AiUnavailableException.class)
+        public ResponseEntity<ErrorResponse> handleAiUnavailable(com.attendance.ai.AiUnavailableException ex) {
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                ex.getMessage(),
+                                "AI Unavailable",
+                                HttpStatus.SERVICE_UNAVAILABLE.value());
+                return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+        }
 
-        ErrorResponse errorResponse = new ErrorResponse(
-                LocalDateTime.now(),
-                ex.getMessage(),
-                "Internal Server Error",
-                HttpStatus.INTERNAL_SERVER_ERROR.value());
-        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+        @ExceptionHandler(Exception.class)
+        public ResponseEntity<ErrorResponse> handleGlobalException(
+                        Exception ex, WebRequest request) {
+
+                ErrorResponse errorResponse = new ErrorResponse(
+                                LocalDateTime.now(),
+                                ex.getMessage(),
+                                "Internal Server Error",
+                                HttpStatus.INTERNAL_SERVER_ERROR.value());
+                return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
 }

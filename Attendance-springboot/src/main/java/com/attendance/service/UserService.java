@@ -219,6 +219,11 @@ public class UserService {
         return (long) users.size();
     }
 
+    /** Bulk lookup used to derive which classes a restricted subject's roster actually belongs to. */
+    public List<User> getUserEntitiesByIds(List<String> ids) {
+        return userRepository.findAllById(ids);
+    }
+
     public User getUserEntityById(String id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));

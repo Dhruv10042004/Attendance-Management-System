@@ -1,4 +1,5 @@
 package com.attendance.repository;
+
 import com.attendance.entity.AttendanceRecord;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
@@ -15,6 +16,8 @@ public interface AttendanceRecordRepository extends MongoRepository<AttendanceRe
     Optional<AttendanceRecord> findBySubjectIdAndDateAndStudentId(String subjectId, LocalDate date, String studentId);
 
     List<AttendanceRecord> findByStudentId(String studentId);
-    
+
     List<AttendanceRecord> findBySubjectId(String subjectId);
+
+    List<AttendanceRecord> findByStudentIdIn(java.util.Collection<String> studentIds);
 }

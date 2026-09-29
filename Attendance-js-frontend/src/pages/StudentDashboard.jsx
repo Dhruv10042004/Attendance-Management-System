@@ -30,6 +30,69 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import api from '../lib/api';
 
+/** "My Attendance": overall % + one row per subject, straight from the database. No AI involved. */
+function MyAttendance() {
+  const [state, setState] = useState({ loading: true });
+  useEffect(() => {
+    api.get('/attendance/my-sheet')
+      .then((res) => setState({ data: res.data }))
+      .catch((err) => setState({ error: err.response?.data?.message || 'Could not load your attendance.' }));
+  }, []);
+
+  const { loading, data, error } = state;
+  return (
+    <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 mb-6">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-gray-800 dark:text-gray-200">My Attendance</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading && <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {data && (
+          <>
+            <div className="mb-3 flex flex-wrap items-end gap-x-6 gap-y-1">
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-200">
+                {data.overallPct ?? '—'}{data.overallPct != null && '%'}
+                <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">overall</span>
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{data.attended}</span> of{' '}
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{data.total}</span> lectures attended
+              </p>
+            </div>
+            {(!data.bySubject || data.bySubject.length === 0) ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No attendance has been recorded for you yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {data.bySubject.map((s) => (
+                  <div
+                    key={s.subject}
+                    className={`flex justify-between rounded-md border px-3 py-2 text-sm ${
+                      s.attendancePct != null && s.attendancePct < 75
+                        ? 'border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950'
+                        : 'border-gray-200 dark:border-gray-700'
+                    }`}
+                  >
+                    <div>
+                      <span className="text-gray-700 dark:text-gray-300">{s.subject}</span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {s.attended} of {s.total} lecture{s.total === 1 ? '' : 's'} attended
+                      </p>
+                    </div>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                      {s.attendancePct ?? '—'}{s.attendancePct != null && '%'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 const toLocalIsoString = (date) => {
     const pad = (n) => String(n).padStart(2, '0');
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T` +
@@ -615,6 +678,8 @@ const { theme, toggleTheme } = useTheme();
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <MyAttendance />
+
         {/* Stats Section */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
           <Card className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-colors duration-200 shadow-sm hover:shadow-md">
