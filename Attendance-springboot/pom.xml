@@ -30,10 +30,10 @@
 </dependencies>
 </dependencyManagement>
 <dependencies>
-<!--  Spring AI + local Ollama (chat model, ChatClient, @Tool calling)  -->
+<!--  Spring AI + Gemini (chat model, ChatClient, @Tool calling)  -->
 <dependency>
-<groupId>org.springframework.ai</groupId>
-<artifactId>spring-ai-starter-model-ollama</artifactId>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-model-google-genai</artifactId>
 </dependency>
 <!--  Spring Boot Web  -->
 <dependency>

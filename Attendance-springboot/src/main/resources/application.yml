@@ -1,23 +1,27 @@
 spring:
   application:
     name: Attendance Management System
+
   ai:
-    ollama:
-      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-      chat:
-        options:
-          model: ${OLLAMA_MODEL:llama3.2}   # must be a tool-capable model, see AI_FEATURES.md
-          temperature: 0.2
-          num-ctx: 8192
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY}
+        chat:
+          options:
+            model: gemini-3.5-flash-lite
+
     retry:
-      max-attempts: 1   # fail fast when Ollama is down instead of retrying
+      max-attempts: 1
+
   http:
     client:
       connect-timeout: 5s
-      read-timeout: ${OLLAMA_TIMEOUT:120s}
+      read-timeout: 120s
+
   data:
     mongodb:
       uri: ${MONGODB_URI}
+
   servlet:
     multipart:
       max-file-size: 10MB
@@ -31,11 +35,15 @@ server:
 app:
   attendance:
     required-percent: 75
+
   jwtSecret: ${JWT_SECRET}
   jwtExpirationMs: 86400000
+
   demo-data:
     enabled: ${DEMO_DATA_ENABLED}
+
   base-url: ${APP_BASE_URL}
+
   upload:
     dir: ${UPLOAD_DIR:uploads/attendance-proofs}
 
